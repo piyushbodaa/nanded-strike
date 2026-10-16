@@ -9,12 +9,53 @@ import { WEAPONS, PURCHASES, CLASSIC_TARGET_SCORE, type Weapon, type MatchMode a
 import { DEFAULT_LOCATION_ID, LOCATIONS } from '../lib/locations';
 import { PLACES, PLACE_CATEGORIES, PLACE_SECTORS, getPlace, placeSearchText } from '../lib/places';
 import { browserDisplayPlatform, requestDisplayMode, rotateHint, toggleDisplayFullscreen, viewportOrientation, type DisplayMode } from '../lib/display-mode';
+import { BOT_DIFFICULTY_OPTIONS, DEFAULT_BOT_DIFFICULTY, normalizeBotDifficulty, type BotDifficulty } from '../lib/bot-difficulty';
 
-const initialHUD: HUD = { now:0, mode:'lobby', paused:false, player:null, players:[], scores:{blue:0,orange:0}, remaining:300, room:'', ping:0, winner:null, feed:[], hit:false, hurt:false, connected:true, scoreboard:false, location:'Bhagya Nagar', exploration:false, aim:0, scoped:false, crouched:false, gameMode:'classic', classic:null, buyOpen:false, selectedGrenade:'he', round:1, canBuy:false, spectating:'',botMatch:false,watching:false };
+const initialHUD: HUD = { now:0, mode:'lobby', paused:false, player:null, players:[], scores:{blue:0,orange:0}, remaining:300, room:'', ping:0, winner:null, feed:[], hit:false, hurt:false, connected:true, scoreboard:false, location:'Bhagya Nagar', exploration:false, aim:0, scoped:false, crouched:false, gameMode:'classic', classic:null, buyOpen:false, selectedGrenade:'he', round:1, canBuy:false, spectating:'',botMatch:false,watching:false,botDifficulty:DEFAULT_BOT_DIFFICULTY };
 const defaultSettings: Settings = { sensitivity:1, volume:.35, quality:'high' };
 type Modal = 'multiplayer' | 'settings' | 'guide' | 'screen' | 'places' | null;
 const WEAPON_LABELS:Record<Weapon,string>={rifle:'Rifle',pistol:'Handgun',knife:'Knife',smg:'SMG',sniper:'Sniper',shotgun:'Shotgun'};
 const UTILITIES:{id:GrenadeKind;label:string;short:string}[]=[{id:'he',label:'HE grenade',short:'HE'},{id:'flash',label:'Flashbang',short:'FLASH'},{id:'smoke',label:'Smoke grenade',short:'SMOKE'}];
+const BOT_DIFFICULTY_STORAGE_KEY='nanded-bot-difficulty-v1';
+const STARTUP_PHASES=[
+  {id:'client',label:'Opening the game'},
+  {id:'assets',label:'Loading Nanded and your squad'},
+  {id:'scene',label:'Preparing the streets'},
+] as const;
+type StartupPhase=(typeof STARTUP_PHASES)[number]['id'];
+
+function StartupLoading({phase,onSkip}:{phase:StartupPhase;onSkip:()=>void}) {
+  const current=STARTUP_PHASES.findIndex(item=>item.id===phase);
+  return <section className="startup-loading" data-testid="startup-loading" aria-label="Counter Strike Nanded loading">
+    <div className="startup-grid" aria-hidden="true"/>
+    <div className="startup-frame">
+      <div className="startup-kicker"><span>FIELD BRIEFING</span><span>BHAGYA NAGAR · NANDED</span></div>
+      <div className="startup-emblem" aria-hidden="true"><i/><Crosshair size={70}/><b>N</b></div>
+      <h2>COUNTER STRIKE<span>NANDED</span></h2>
+      <p className="startup-tagline">Know the streets. Back your team.</p>
+      <div className="startup-progress" role="status" aria-live="polite"><span className="startup-phase" data-testid="startup-phase">{STARTUP_PHASES[current].label}</span><div className="startup-steps" aria-hidden="true">{STARTUP_PHASES.map((item,index)=><i key={item.id} className={index<current?'complete':index===current?'current':''}/>)}</div></div>
+      <div className="startup-footer"><span>LOCAL STREETS · ORIGINAL GAME</span><button type="button" data-testid="skip-startup" onClick={onSkip}>SKIP INTRO <ArrowRight size={17}/></button></div>
+    </div>
+  </section>;
+}
+
+function MatchBriefing({phase,eyebrow,title,detail,muted}:{phase:string;eyebrow:string;title:string;detail:string;muted:boolean}) {
+  const [armed,setArmed]=useState(false);
+  useEffect(()=>{
+    if(muted||armed)return;
+    let secondFrame=0;
+    // Let the initial world render complete before starting the brief visible cue.
+    const firstFrame=requestAnimationFrame(()=>{secondFrame=requestAnimationFrame(()=>setArmed(true));});
+    return()=>{cancelAnimationFrame(firstFrame);cancelAnimationFrame(secondFrame);};
+  },[muted,armed]);
+  return <div className={`match-briefing ${armed?'is-armed':''} ${phase==='over'?'round-result':''} ${muted?'briefing-muted':''}`} data-testid="match-entry" data-phase={phase} aria-hidden="true"><div className="briefing-rule"/><span>{eyebrow}</span><h2>{title}</h2><p>{detail}</p><div className="briefing-rule"/></div>;
+}
+
+function DifficultyChoice({value,onChange,prefix='',disabled=false}:{value:BotDifficulty;onChange:(difficulty:BotDifficulty)=>void;prefix?:string;disabled?:boolean}) {
+  const option=BOT_DIFFICULTY_OPTIONS.find(item=>item.id===value)??BOT_DIFFICULTY_OPTIONS[0];
+  const hintId=`${prefix}bot-difficulty-hint`;
+  return <div className="bot-difficulty-choice"><div className="difficulty-heading"><b>BOT DIFFICULTY</b><span>{prefix?'Change without restarting':'Start with Beginner'}</span></div><div className="difficulty-options" role="group" aria-label="Bot difficulty" aria-describedby={hintId}>{BOT_DIFFICULTY_OPTIONS.map(item=><button key={item.id} type="button" data-testid={`${prefix}difficulty-${item.id}`} aria-pressed={value===item.id} disabled={disabled} onClick={()=>onChange(item.id)}>{item.label}</button>)}</div><p id={hintId} data-testid={hintId} role="status">{option.description}</p></div>;
+}
 
 function ModeChoice({value,onChange,prefix=''}:{value:GameMode;onChange:(mode:GameMode)=>void;prefix?:string}) {
   return <div className="mode-choice" role="group" aria-label="Game rules">{([{id:'classic',name:'BOMB DEFUSAL',description:'Plant or defuse · One life per round'},{id:'deathmatch',name:'DEATHMATCH',description:'All weapons · Respawn and fight'}] as const).map(mode=><button key={mode.id} data-testid={`${prefix}mode-${mode.id}`} aria-pressed={value===mode.id} onClick={()=>onChange(mode.id)}>{mode.id==='classic'?<Bomb size={18}/>:<Crosshair size={18}/>}<span><b>{mode.name}</b><small>{mode.description}</small></span></button>)}</div>;
@@ -33,6 +74,7 @@ export default function Home() {
   const engine = useRef<GameClient|null>(null);
   const modalPanel = useRef<HTMLElement>(null);
   const buyPanel = useRef<HTMLElement>(null);
+  const pausePanel = useRef<HTMLElement>(null);
   const joystickThumb = useRef<HTMLSpanElement>(null);
   const joystickPointer = useRef<number|null>(null);
   const screenLocked = useRef(false);
@@ -41,6 +83,8 @@ export default function Home() {
   const screenChanging = useRef(false);
   const [hud,setHUD] = useState<HUD>(initialHUD);
   const [ready,setReady] = useState(false);
+  const [startupPhase,setStartupPhase] = useState<StartupPhase>('client');
+  const [startupSkipped,setStartupSkipped] = useState(false);
   const [error,setError] = useState('');
   const [fatal,setFatal] = useState(false);
   const [modal,setModal] = useState<Modal>(null);
@@ -49,6 +93,7 @@ export default function Home() {
   const [onlineTab,setOnlineTab] = useState<'create'|'join'>('create');
   const [gameMode,setGameMode] = useState<GameMode>('classic');
   const [botTeam,setBotTeam] = useState<'blue'|'orange'|'spectator'>('blue');
+  const [botDifficulty,setBotDifficulty] = useState<BotDifficulty>(DEFAULT_BOT_DIFFICULTY);
   const [copied,setCopied] = useState(false);
   const [name,setName] = useState('Operator');
   const [settings,setSettings] = useState(defaultSettings);
@@ -71,21 +116,30 @@ export default function Home() {
   const shownPlaces=filteredPlaces.slice(0,placeLimit);
   const categoryCounts=useMemo(()=>new Map(PLACE_CATEGORIES.map(category=>[category.id,PLACES.filter(place=>place.category===category.id).length])),[]);
   const selectedLocation = LOCATIONS.find(location=>location.id===locationId) ?? LOCATIONS[0];
+  const pauseOpen=hud.mode!=='lobby'&&hud.paused&&!modal&&!hud.buyOpen;
 
   useEffect(()=>{
     let disposed=false;
     const initialize=async()=>{
-      const {GameClient}=await import('../lib/client');
-      await Promise.all([GameClient.preload(),document.fonts.load('700 92px "Noto Sans Devanagari"').catch(()=>{})]);
-      if(disposed||!canvas.current)return;
       let nextSettings={...defaultSettings};
       let savedName='Operator';
+      let savedDifficulty=DEFAULT_BOT_DIFFICULTY;
       try {
         const saved=JSON.parse(localStorage.getItem('nanded-settings-v2')||'null');
         if(saved)nextSettings={sensitivity:Math.max(.3,Math.min(2.5,Number(saved.sensitivity)||1)),volume:Math.max(0,Math.min(1,Number(saved.volume)||0)),quality:saved.quality==='low'?'low':'high'};
         savedName=(localStorage.getItem('nanded-name')||'Operator').slice(0,18);
       }catch{}
-      setSettings(nextSettings);setName(savedName);setTouch(matchMedia('(pointer:coarse)').matches);
+      try{savedDifficulty=normalizeBotDifficulty(localStorage.getItem(BOT_DIFFICULTY_STORAGE_KEY));}catch{}
+      setSettings(nextSettings);setName(savedName);setBotDifficulty(savedDifficulty);setTouch(matchMedia('(pointer:coarse)').matches);
+      const {GameClient}=await import('../lib/client');
+      if(disposed)return;
+      setStartupPhase('assets');
+      await Promise.all([GameClient.preload(),document.fonts.load('700 92px "Noto Sans Devanagari"').catch(()=>{})]);
+      if(disposed||!canvas.current)return;
+      setStartupPhase('scene');
+      // Yield before synchronous scene construction so its real loading phase can paint.
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+      if(disposed||!canvas.current)return;
       const params=new URLSearchParams(window.location.search);
       const startLocation=params.get('location');
       if(LOCATIONS.some(location=>location.id===startLocation))setLocationId(startLocation!);
@@ -106,6 +160,7 @@ export default function Home() {
     try{localStorage.setItem('nanded-settings-v2',JSON.stringify(settings));}catch{}
   },[settings,ready]);
   useEffect(()=>{if(ready)try{localStorage.setItem('nanded-name',name);}catch{}},[name,ready]);
+  useEffect(()=>{if(ready)try{localStorage.setItem(BOT_DIFFICULTY_STORAGE_KEY,botDifficulty);}catch{}},[botDifficulty,ready]);
   useEffect(()=>{
     const syncDisplay=()=>{
       const fullscreen=!!document.fullscreenElement;
@@ -169,6 +224,26 @@ export default function Home() {
     panel?.addEventListener('keydown',onKey);
     return()=>{panel?.removeEventListener('keydown',onKey);previous?.focus();};
   },[hud.buyOpen]);
+  useEffect(()=>{
+    const panel=pausePanel.current;
+    if(!pauseOpen||!panel)return;
+    const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
+    const focusable=()=>Array.from(panel.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],[tabindex="0"]')).filter(element=>element.getClientRects().length>0);
+    (focusable()[0]??panel).focus({preventScroll:true});
+    const onKey=(event:KeyboardEvent)=>{
+      if(event.key!=='Tab')return;
+      event.stopPropagation();
+      const elements=focusable(),first=elements[0],last=elements.at(-1);
+      if(!first){event.preventDefault();panel.focus();}
+      else if(event.shiftKey&&(document.activeElement===first||document.activeElement===panel)){event.preventDefault();last?.focus();}
+      else if(!event.shiftKey&&(document.activeElement===last||document.activeElement===panel)){event.preventDefault();first.focus();}
+    };
+    panel.addEventListener('keydown',onKey);
+    return()=>{
+      panel.removeEventListener('keydown',onKey);
+      if(previous?.isConnected&&previous.getClientRects().length>0&&!previous.closest('[inert]'))previous.focus({preventScroll:true});
+    };
+  },[pauseOpen]);
 
   const resetJoystick=()=>{
     joystickPointer.current=null;
@@ -190,7 +265,8 @@ export default function Home() {
     if(joystickThumb.current)joystickThumb.current.style.transform=`translate(${x}px,${z}px)`;
     if(engine.current){engine.current.touchMove=distance<radius*.12?{forward:0,strafe:0}:{forward:-z/radius,strafe:x/radius};engine.current.touchSprint=distance/radius>.9;}
   };
-  const startBots=()=>{resetTouchControls();setError('');setModal(null);if(engine.current){engine.current.startBots(name.trim()||'Operator',locationId,gameMode,botTeam);trackGame('game_start',botTeam==='spectator'?'watch_bots':'bots');}};
+  const chooseBotDifficulty=(value:BotDifficulty)=>{const difficulty=normalizeBotDifficulty(value);setBotDifficulty(difficulty);if(hud.botMatch)engine.current?.setBotDifficulty(difficulty);};
+  const startBots=()=>{resetTouchControls();setError('');setModal(null);if(engine.current){engine.current.startBots(name.trim()||'Operator',locationId,gameMode,botTeam,botDifficulty);trackGame('game_start',botTeam==='spectator'?'watch_bots':'bots');}};
   const startSolo=()=>{resetJoystick();setError('');setModal(null);if(engine.current){engine.current.startSolo(name.trim()||'Operator',locationId,true);trackGame('game_start','explore');}};
   const visitPlace=()=>{
     if(!selectedPlace||hud.mode==='online'||!ready)return;
@@ -238,6 +314,7 @@ export default function Home() {
   const player=hud.player;
   const humanCount=hud.players.filter(operator=>!operator.bot).length;
   const botCount=hud.players.filter(operator=>operator.bot).length;
+  const currentDifficulty=BOT_DIFFICULTY_OPTIONS.find(option=>option.id===hud.botDifficulty)??BOT_DIFFICULTY_OPTIONS[0];
   const isOnline=hud.mode==='online';
   const classic=hud.gameMode==='classic'&&!hud.exploration?hud.classic:null;
   const bomb=classic?.bomb;
@@ -249,6 +326,10 @@ export default function Home() {
   const bombAction=bomb?.action?.playerId===player?.id?bomb?.action:undefined;
   const actionProgress=bombAction?Math.max(0,Math.min(1,(hud.now-bombAction.startedAt)/(bombAction.completesAt-bombAction.startedAt))):0;
   const objective=classic?.phase==='waiting'?'Waiting for both teams':classic?.phase==='freeze'?'BUY TIME · Prepare for the round':classic?.phase==='over'?(classic.reason||'Round complete'):bomb?.status==='planted'?`BOMB PLANTED · ${Math.max(0,Math.ceil((bomb.explodeAt-hud.now)/1000))}s`:hud.watching?'CT defend · T attack sites A and B':player?.team==='orange'?(bomb?.carrierId===player.id?'YOU HAVE THE BOMB · Reach A or B':'ATTACK · Escort the bomb carrier'):'DEFEND · Protect sites A and B';
+  const startupVisible=!ready&&!fatal&&!startupSkipped;
+  const briefingPhase=classic?.phase??'entry';
+  const briefingTitle=hud.exploration?'EXPLORE NANDED':classic?.phase==='over'?(classic.roundWinner==='blue'?'CT WIN THE ROUND':classic.roundWinner==='orange'?'T WIN THE ROUND':'ROUND COMPLETE'):classic?.phase==='freeze'?'GEAR UP':classic?.phase==='live'?'ROUND LIVE':classic?.phase==='waiting'?'ASSEMBLE YOUR TEAM':hud.watching?'WATCH THE MATCH':'DEATHMATCH';
+  const briefingDetail=hud.exploration?'Your city. Your pace.':classic?.phase==='over'?(classic.reason||'Prepare for the next round'):classic?.phase==='waiting'?'The round starts when both teams are here':hud.watching?'Counter-Terrorists vs Terrorists':classic?(player?.team==='blue'?'CT · Defend sites A and B':'T · Take the bomb to A or B'):'Keep moving. Find cover. Stay with your team.';
   const purchaseEntries=Object.entries(PURCHASES) as [PurchaseId,(typeof PURCHASES)[PurchaseId]][];
   const stopInteraction=()=>engine.current?.setInteracting(false);
   const buyItem=(id:PurchaseId)=>{engine.current?.buy(id);};
@@ -257,7 +338,8 @@ export default function Home() {
     <canvas ref={canvas} className="world-canvas" data-testid="game-canvas" aria-label="Interactive 3D map of Bhagya Nagar and nearby Nanded streets"/>
     {!hud.watching&&hud.scoped&&!hud.paused&&!hud.buyOpen&&<div className="scope-overlay" data-testid="scope-overlay" aria-label={`${hud.aim===2?'4':'2'} times scope`}><div className="scope-glass"><i/><i/><b/><span>{hud.aim===2?'4':'2'}×</span></div></div>}
     {!hud.watching&&!!player&&player.flashedUntil>hud.now&&<div className="flash-overlay" aria-hidden="true" style={{opacity:Math.min(1,(player.flashedUntil-hud.now)/1000)}}/>}
-    {hud.mode==='lobby'&&<div className="lobby" data-testid="lobby">
+    {startupVisible&&<StartupLoading phase={startupPhase} onSkip={()=>setStartupSkipped(true)}/>}
+    {hud.mode==='lobby'&&<div className={`lobby ${ready?'lobby-ready':''}`} data-testid="lobby" inert={startupVisible}>
       <div className="lobby-shade"/>
       <header className="site-header">
         <Link className="brand" href="/" aria-label="Counter Strike Nanded home"><Crosshair size={30}/><span className="brand-wordmark">COUNTER STRIKE <b>NANDED</b></span></Link>
@@ -283,6 +365,7 @@ export default function Home() {
                 <button data-testid="bot-team-orange" aria-pressed={botTeam==='orange'} onClick={()=>setBotTeam('orange')}><b>T</b><span>Terrorists</span></button>
                 <button data-testid="bot-team-spectator" aria-pressed={botTeam==='spectator'} onClick={()=>setBotTeam('spectator')}><b><Eye size={14}/> WATCH</b><span>Bots play both sides</span></button>
               </div>
+              <DifficultyChoice value={botDifficulty} onChange={chooseBotDifficulty} disabled={!ready}/>
               <button className="primary-button play-bots-button" data-testid="play-bots" disabled={!ready||busy} onClick={startBots}><Bot size={24}/><span>{botTeam==='spectator'?'WATCH BOTS':'PLAY WITH BOTS'}<small>{botTeam==='spectator'?'Watch CT and T teams fight':`You + AI teammates vs AI opponents · ${botTeam==='blue'?'CT':'T'}`}</small></span><ArrowRight size={23}/></button>
             </div>
             <div className="hero-buttons alternative-play">
@@ -295,7 +378,7 @@ export default function Home() {
               <div><label className="input-label location-label" htmlFor="start-location">MAP START</label><div className="select-wrap"><MapPin size={17}/><select id="start-location" data-testid="start-location" value={locationId} onChange={event=>setLocationId(event.target.value)}>{LOCATIONS.map(location=><option key={location.id} value={location.id}>{location.name}</option>)}</select><ChevronDown size={16}/></div></div>
             </div>
             <div className="lobby-utilities"><button className="screen-button lobby-screen-button" data-testid="open-screen-lobby" onClick={()=>open('screen')}><Smartphone size={18}/><span>SCREEN & ROTATION</span></button><button className="browse-local-link" onClick={()=>open('places')}><MapPin size={18}/>{PLACES.length} LOCAL PLACES<ArrowRight size={16}/></button></div>
-            <p className="ready-note"><i className={ready?'ready':''}/>{ready?'Ready · No download or account needed':'Loading the Nanded map…'}</p>
+            <p className="ready-note" role="status"><i className={ready?'ready':''}/>{ready?'Ready · No download or account needed':STARTUP_PHASES.find(phase=>phase.id===startupPhase)?.label}</p>
           </div>
         </section>
         <aside className="map-card">
@@ -309,18 +392,19 @@ export default function Home() {
     </div>}
 
     {hud.mode!=='lobby'&&<div className="game-hud">
+      <MatchBriefing key={`${hud.mode}-${hud.room}-${hud.round}-${briefingPhase}`} phase={briefingPhase} eyebrow={hud.exploration?'NANDED FIELD GUIDE':classic?`ROUND ${String(hud.round).padStart(2,'0')} · ${hud.location}`:hud.location} title={briefingTitle} detail={briefingDetail} muted={hud.paused||hud.buyOpen||!!hud.winner||!!modal}/>
       <div className="radar-wrap"><div className="radar-header"><MapPin size={13}/><span>{hud.location}</span><b>N ↑</b></div><canvas ref={minimap} width={360} height={360} aria-label="Minimap with your position and teammates"/></div>
       {hud.exploration?<div className="exploration-status"><Footprints size={19}/><div><b>MAP EXPLORATION</b><span>No enemies · Take your time</span></div></div>:<div className="match-status"><div className="score blue"><small>CT</small>{hud.scores.blue}</div><div className="match-clock"><span>{classic?`ROUND ${hud.round} · FIRST TO ${CLASSIC_TARGET_SCORE}`:"FIRST TO 25"}</span><b>{formatTime(hud.remaining)}</b><small>{hud.watching?'SPECTATOR':classic?(player?.team==='blue'?'CT · DEFENDERS':'T · ATTACKERS'):hud.botMatch?`${botCount} BOTS`:`${humanCount} ${humanCount===1?'PLAYER':'PLAYERS'}`}</small></div><div className="score orange"><small>T</small>{hud.scores.orange}</div></div>}
       <div className="session-tools"><span>{hud.exploration?'EXPLORE':hud.botMatch?'BOT MATCH':['NANDED','CLASSC'].includes(hud.room)?'PUBLIC MATCH':'PRIVATE MATCH'}</span>{isOnline&&<button className="invite-button" data-testid="room-code" onClick={()=>void copyInvite()} aria-label={`Copy invite for room ${hud.room}`}><span>{hud.room}</span>{copied?<Check size={17}/>:<Copy size={17}/>}</button>}<button className="places-button" data-testid="open-places-game" aria-label="Browse places on the map" onClick={()=>open('places')}><MapPin size={17}/><span>PLACES</span></button><button className="screen-button" data-testid="open-screen-game" aria-label="Screen orientation and full screen" onClick={()=>open('screen')}><Smartphone size={17}/><span>SCREEN</span></button><button onClick={pause} aria-label="Pause game"><Pause size={20}/></button></div>
       {isOnline&&<div className={`online-status ${!hud.connected?'is-reconnecting':''}`} data-testid="online-status"><i/>{!hud.connected?'RECONNECTING…':humanCount===1?'WAITING FOR OTHER PLAYERS':`${humanCount} REAL PLAYERS · ${hud.ping} MS`}</div>}
-      {hud.botMatch&&<div className="online-status bot-match-status" data-testid="bot-match-status"><Bot size={13}/>{hud.watching?`WATCH BOTS · ${botCount} AI PLAYERS`:`${humanCount} HUMAN · ${botCount} BOTS · ${player?.team==='blue'?'YOU ARE CT':'YOU ARE T'}`}</div>}
+      {hud.botMatch&&<div className="online-status bot-match-status" data-testid="bot-match-status"><Bot size={13}/><span className="bot-status-copy"><span>{hud.watching?`WATCH BOTS · ${botCount} AI PLAYERS`:`${humanCount} HUMAN · ${botCount} BOTS · ${player?.team==='blue'?'CT':'T'}`}</span><small data-testid="bot-difficulty-status">{currentDifficulty.label.toUpperCase()}</small></span></div>}
       {classic&&<div className={`classic-status ${bomb?.status==='planted'?'bomb-active':''}`} data-testid="classic-status"><Bomb size={15}/><div className="objective-copy"><span>{objective}</span>{player&&<div className="site-directions" aria-label="Bomb site directions">{classic.sites.map(site=>{const distance=Math.round(Math.hypot(site.x-player.x,site.z-player.z));const bearing=Math.atan2(-(site.x-player.x),-(site.z-player.z))-player.yaw;return <span key={site.id} aria-label={`Bomb site ${site.id}, ${distance} meters`}><b>{site.id}</b><ArrowRight size={12} style={{transform:`rotate(${-90-bearing*180/Math.PI}deg)`}}/><span>{distance} m</span></span>;})}</div>}</div></div>}
       {!hud.exploration&&<div className="kill-feed">{hud.feed.map(feed=><div key={feed.id}>{feed.text}</div>)}</div>}
       {!hud.watching&&!hud.paused&&!hud.buyOpen&&!hud.scoped&&player&&player.health>0&&!hud.winner&&<div className={`crosshair ${hud.hit?'hit-confirmed':''}`}><i/><i/><i/><i/><b/></div>}
       {hud.hit&&<div className="hit-marker">×</div>}
       <div className={`player-status ${hud.watching?'spectator-hidden':''}`}><Shield size={21}/><b>{player?.health??100}</b><span>HEALTH</span>{!hud.exploration&&<span className="kd">{player?.kills??0}<small>K</small><i>/</i>{player?.deaths??0}<small>D</small></span>}</div>
       {classic&&!hud.watching&&<div className="economy-status"><span data-testid="player-money">${player?.money??0}</span><small><Shield size={13}/>{player?.armor??0}{player?.defuseKit?' · KIT':''}</small><button data-testid="open-buy" onClick={()=>engine.current?.toggleBuy(true)}><ShoppingBag size={17}/><b>BUY</b><kbd>B</kbd></button></div>}
-      <div className={`weapon-status ${player?.weapon==='knife'?'is-melee':''} ${hud.watching?'spectator-hidden':''}`} data-testid="weapon-status"><span className="weapon-type">{WEAPONS[player?.weapon??'rifle'].name} · {WEAPON_LABELS[player?.weapon??'rifle'].toUpperCase()}</span>{player?.weapon==='knife'?<div className="melee-readout"><WeaponIcon weapon="knife"/><span>CLOSE RANGE</span></div>:<div><b>{player?.ammo??30}</b><span>/ {player?.reserve??120}</span></div>}<small>{player?.weapon==='knife'?(touch?'SLASH · AIM FOR STAB':'LEFT SLASH · RIGHT STAB'):player&&player.reloadUntil>hud.now?'RELOADING…':player?.ammo===0?'RELOAD YOUR WEAPON':hud.aim>0?`${hud.scoped?(hud.aim===2?'4× SCOPE':'2× SCOPE'):'AIMING'}${hud.crouched?' · CROUCHED':''}`:touch?'TAP AIM FOR SIGHTS':'RIGHT CLICK TO AIM'}</small></div>
+      <div className={`weapon-status ${player?.weapon==='knife'?'is-melee':''} ${hud.watching?'spectator-hidden':''}`} data-testid="weapon-status"><span className="weapon-type">{WEAPONS[player?.weapon??'rifle'].name} · {WEAPON_LABELS[player?.weapon??'rifle'].toUpperCase()}</span>{player?.weapon==='knife'?<div className="melee-readout"><WeaponIcon weapon="knife"/><span>CLOSE RANGE</span></div>:<div><b>{player?.ammo??30}</b><span>/ {player?.reserve??120}</span></div>}{player&&player.weapon!=='knife'&&player.reloadUntil>hud.now&&<progress className="reload-progress" max={1} value={Math.max(0,Math.min(1,1-(player.reloadUntil-hud.now)/WEAPONS[player.weapon].reload))} aria-label="Weapon reload progress"/>}<small>{player?.weapon==='knife'?(touch?'SLASH · AIM FOR STAB':'LEFT SLASH · RIGHT STAB'):player&&player.reloadUntil>hud.now?'RELOADING…':player?.ammo===0?'RELOAD YOUR WEAPON':hud.aim>0?`${hud.scoped?(hud.aim===2?'4× SCOPE':'2× SCOPE'):'AIMING'}${hud.crouched?' · CROUCHED':''}`:touch?'TAP AIM FOR SIGHTS':'RIGHT CLICK TO AIM'}</small></div>
       <div className={`weapon-loadout ${loadout.length>3?'expanded-loadout':''} ${hud.watching?'spectator-hidden':''}`} role="group" aria-label="Weapon loadout">{loadout.map(weapon=><button key={weapon} type="button" data-testid={`weapon-${weapon}`} aria-label={`Equip ${WEAPON_LABELS[weapon].toLowerCase()}`} aria-pressed={(player?.weapon??'rifle')===weapon} disabled={!player||player.health<=0||!!hud.winner} onClick={()=>engine.current?.selectWeapon(weapon)}><kbd>{weapon==='pistol'?'2':weapon==='knife'?'3':'1'}</kbd><WeaponIcon weapon={weapon}/><span>{WEAPON_LABELS[weapon]}</span></button>)}</div>
       {classic&&!hud.watching&&player&&<div className="utility-bar" aria-label="Grenades"><div role="group" aria-label="Choose grenade">{UTILITIES.map(item=><button key={item.id} data-testid={`grenade-${item.id}`} aria-label={`Select ${item.label}, ${player.grenades[item.id]} available`} aria-pressed={hud.selectedGrenade===item.id} disabled={!player.grenades[item.id]||player.health<=0} onClick={()=>engine.current?.selectGrenade(item.id)}><span>{item.short}</span><b>{player.grenades[item.id]}</b></button>)}</div><button className="throw-grenade" data-testid="throw-grenade" disabled={!player.grenades[hud.selectedGrenade]||player.health<=0||classic.phase!=='live'} onClick={()=>engine.current?.throwGrenade()}>THROW <kbd>G</kbd></button></div>}
       {!hud.watching&&(canPlant||canDefuse||canPickup||bombAction)&&!hud.paused&&!hud.buyOpen&&<div className="bomb-interaction"><button data-testid="bomb-interact" aria-label={canDefuse?'Hold to defuse bomb':canPickup?'Pick up bomb':'Hold to plant bomb'} onPointerDown={event=>{event.currentTarget.setPointerCapture(event.pointerId);engine.current?.setInteracting(true);}} onPointerUp={stopInteraction} onPointerCancel={stopInteraction} onLostPointerCapture={stopInteraction}><Bomb size={20}/><span>HOLD {touch?'':'E '}{canDefuse||bombAction?.type==='defuse'?'TO DEFUSE':canPickup?'TO PICK UP BOMB':'TO PLANT'}</span></button>{bombAction&&<progress value={actionProgress} max="1" aria-label={bombAction.type==='defuse'?'Defusing progress':'Planting progress'}/>}</div>}
@@ -337,8 +421,8 @@ export default function Home() {
       </div>}
       {hud.watching&&!hud.paused&&<div className="spectator-controls" data-testid="bot-spectator-controls"><Eye size={19}/><div><small>WATCHING BOT</small><b>{hud.spectating||'Match starting…'}</b><span>{player?.team==='blue'?'CT · Counter-Terrorists':'T · Terrorists'}</span></div><button className="secondary-button" data-testid="next-bot" onClick={()=>engine.current?.cycleSpectator()}>NEXT BOT<ArrowRight size={18}/></button></div>}
       {!hud.watching&&player&&player.health<=0&&!hud.paused&&!hud.winner&&<div className="respawn-banner"><span>ELIMINATED</span><h2>{classic?hud.spectating?`WATCHING ${hud.spectating}`:'NEXT ROUND':`BACK IN ${Math.max(1,Math.ceil((player.respawnAt-hud.now)/1000))}`}</h2><p>{classic?hud.spectating?'Click to cycle teammates. You return next round.':'One life per round. Wait for the next round to return.':'Find cover. Try another angle.'}</p></div>}
-      {!hud.exploration&&(hud.scoreboard||hud.winner)&&<div className="scoreboard" data-testid="scoreboard"><div className="scoreboard-title"><span>{hud.botMatch?'BOT MATCH':'ONLINE MATCH'} · CT vs T</span><h2>{hud.winner?(hud.winner==='draw'?'DRAW':hud.winner==='blue'?'COUNTER-TERRORISTS WIN':'TERRORISTS WIN'):'SCOREBOARD'}</h2>{hud.winner&&<p>Next round starts automatically.</p>}</div><div className="scoreboard-columns"><span>OPERATOR</span><span>K</span><span>D</span></div>{[...hud.players].sort((a,b)=>b.kills-a.kills).map(operator=><div className={`scoreboard-row ${operator.id===player?.id?'is-me':''}`} key={operator.id}><span><i style={{background:operator.team==='blue'?'var(--blue)':'var(--orange)'}}/>{operator.name}<small>{operator.id===player?.id&&!hud.watching?'YOU':operator.bot?'BOT':'PLAYER'} · {operator.team==='blue'?'CT':'T'}</small></span><b>{operator.kills}</b><span>{operator.deaths}</span></div>)}</div>}
-      {hud.paused&&!modal&&!hud.buyOpen&&<div className="overlay pause-overlay"><section className="pause-panel" data-testid="pause-menu" role="dialog" aria-label="Game paused"><div className="eyebrow"><Pause size={15}/>{isOnline?'MATCH MENU':hud.botMatch?'BOT MATCH PAUSED':'GAME PAUSED'}</div><h2>{isOnline?'READY TO PLAY?':'TAKE A BREATHER.'}</h2><p>{isOnline?`${humanCount} real ${humanCount===1?'player':'players'} in room ${hud.room}. The match keeps running while this menu is open.`:hud.botMatch?'The bot match is paused. Resume when you are ready.':'Your map exploration is paused.'}</p>{isOnline&&<button className="secondary-button wide pause-invite" onClick={()=>void copyInvite()}><Copy size={18}/>{copied?'INVITE COPIED':'COPY INVITE LINK'}<b>{hud.room}</b></button>}<button className="primary-button wide" data-testid="resume-game" onClick={()=>engine.current?.resume()}><Play size={19}/>{isOnline?'ENTER MATCH':'RESUME'}<ArrowRight size={20}/></button><button className="secondary-button wide pause-places" data-testid="open-places-pause" onClick={()=>open('places')}><MapPin size={18}/>BROWSE LOCAL PLACES<ArrowRight size={18}/></button><div className="pause-options"><button className="secondary-button" onClick={()=>open('settings')}><Settings2 size={18}/>SETTINGS</button><button className="secondary-button" data-testid="leave-game" onClick={leave}>{isOnline||hud.botMatch?'LEAVE MATCH':'BACK TO MENU'}<ArrowRight size={17}/></button></div><p className="pause-tip">{hud.watching?'Watch the CT and T teams play. Switch players to follow another view.':touch?'Left thumb moves. Drag to aim. Tap a loadout slot; hold FIRE or SLASH to attack.':'WASD move · Right click aim · Ctrl crouch · B buy · E plant / defuse'}</p></section></div>}
+      {!hud.exploration&&(hud.scoreboard||hud.winner)&&<div className={`scoreboard ${hud.winner?'match-victory':''}`} data-testid="scoreboard"><div className="scoreboard-title"><span>{hud.botMatch?'BOT MATCH':'ONLINE MATCH'} · CT vs T</span><h2>{hud.winner?(hud.winner==='draw'?'DRAW':hud.winner==='blue'?'COUNTER-TERRORISTS WIN':'TERRORISTS WIN'):'SCOREBOARD'}</h2>{hud.winner&&<p>Next round starts automatically.</p>}</div><div className="scoreboard-columns"><span>OPERATOR</span><span>K</span><span>D</span></div>{[...hud.players].sort((a,b)=>b.kills-a.kills).map(operator=><div className={`scoreboard-row ${operator.id===player?.id?'is-me':''}`} key={operator.id}><span><i style={{background:operator.team==='blue'?'var(--blue)':'var(--orange)'}}/>{operator.name}<small>{operator.id===player?.id&&!hud.watching?'YOU':operator.bot?'BOT':'PLAYER'} · {operator.team==='blue'?'CT':'T'}</small></span><b>{operator.kills}</b><span>{operator.deaths}</span></div>)}</div>}
+      {pauseOpen&&<div className="overlay pause-overlay"><section ref={pausePanel} className="pause-panel" data-testid="pause-menu" role="dialog" aria-modal="true" aria-label="Game paused" tabIndex={-1}><div className="eyebrow"><Pause size={15}/>{isOnline?'MATCH MENU':hud.botMatch?'BOT MATCH PAUSED':'GAME PAUSED'}</div><h2>{isOnline?'READY TO PLAY?':'TAKE A BREATHER.'}</h2><p>{isOnline?`${humanCount} real ${humanCount===1?'player':'players'} in room ${hud.room}. The match keeps running while this menu is open.`:hud.botMatch?'The bot match is paused. Resume when you are ready.':'Your map exploration is paused.'}</p>{hud.botMatch&&<DifficultyChoice value={hud.botDifficulty} onChange={chooseBotDifficulty} prefix="pause-"/>}{isOnline&&<button className="secondary-button wide pause-invite" onClick={()=>void copyInvite()}><Copy size={18}/>{copied?'INVITE COPIED':'COPY INVITE LINK'}<b>{hud.room}</b></button>}<button className="primary-button wide" data-testid="resume-game" onClick={()=>engine.current?.resume()}><Play size={19}/>{isOnline?'ENTER MATCH':'RESUME'}<ArrowRight size={20}/></button><button className="secondary-button wide pause-places" data-testid="open-places-pause" onClick={()=>open('places')}><MapPin size={18}/>BROWSE LOCAL PLACES<ArrowRight size={18}/></button><div className="pause-options"><button className="secondary-button" onClick={()=>open('settings')}><Settings2 size={18}/>SETTINGS</button><button className="secondary-button" data-testid="leave-game" onClick={leave}>{isOnline||hud.botMatch?'LEAVE MATCH':'BACK TO MENU'}<ArrowRight size={17}/></button></div><p className="pause-tip">{hud.watching?'Watch the CT and T teams play. Switch players to follow another view.':touch?'Left thumb moves. Drag to aim. Tap a loadout slot; hold FIRE or SLASH to attack.':'WASD move · Right click aim · Ctrl crouch · B buy · E plant / defuse'}</p></section></div>}
     </div>}
 
     {hud.buyOpen&&player&&<div className="overlay buy-overlay"><section ref={buyPanel} className="modal-panel buy-panel" role="dialog" aria-modal="true" aria-labelledby="buy-title" data-testid="buy-panel"><button className="modal-close icon-button" data-testid="close-buy" aria-label="Close buy menu" onClick={()=>engine.current?.toggleBuy(false)}><X size={23}/></button><div className="eyebrow"><ShoppingBag size={17}/> EQUIPMENT</div><h2 id="buy-title">GEAR UP.</h2><div className="buy-summary"><b>${player.money}</b><span>{hud.canBuy?`${Math.max(0,Math.ceil(((classic?.phaseEndsAt??hud.now)-hud.now)/1000))}s BUY TIME`:'BUYING CLOSED'}</span><small>{player.team==='blue'?'CT · DEFENDERS':'T · ATTACKERS'}</small></div><p className="buy-note">{hud.canBuy?'Buy one primary weapon, armor and utility. Your round keeps running.':'Buy while alive, near your team’s spawn, during the opening buy time.'}</p>{(['weapon','armor','grenade'] as const).map(kind=><div className="buy-category" key={kind}><h3>{kind==='weapon'?'WEAPONS':kind==='armor'?'PROTECTION & TOOLS':'GRENADES'}</h3><div className="buy-grid">{purchaseEntries.filter(([,item])=>item.kind===kind||(kind==='armor'&&item.kind==='kit')).map(([id,item])=>{

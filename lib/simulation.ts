@@ -3,7 +3,8 @@ import { LOCATIONS, DEFAULT_LOCATION_ID } from "./locations";
 import SPAWN_LAYOUTS from "./spawn-layouts.json";
 import { SpatialGrid } from "./spatial";
 import { raySolid, touchesSolid } from "./geometry";
-import { decideBot, type BotState } from "./bot-ai";
+import { botTargetInView, decideBot, resetBotTarget, type BotState } from "./bot-ai";
+import { BOT_DIFFICULTIES, normalizeBotDifficulty, type BotDifficulty } from "./bot-difficulty";
 
 export type Team = "blue" | "orange";
 export type MatchMode = "deathmatch" | "classic";
@@ -60,7 +61,7 @@ export interface Match {
   mode: MatchMode; classic?: ClassicState; grenades: GrenadeProjectile[]; smokes: SmokeCloud[];
   winner: Team | "draw" | null; events: GameEvent[]; time: number;
   startedAt: number; round: number; winnerAt: number; nextId: number; eventId: number; seed: number;
-  locationId?: string; exploration?: boolean; rulesVersion?: number; bots?: boolean;
+  locationId?: string; exploration?: boolean; rulesVersion?: number; bots?: boolean; botDifficulty?: BotDifficulty;
   spawns?: Record<Team,{x:number;z:number}[]>; spawnYaws?: Record<Team,number>;
 }
 export const EYE_HEIGHT = 1.58;
@@ -154,7 +155,7 @@ function makePlayer(match: Match, name: string, team: Team, bot: boolean): Playe
   }
   return player;
 }
-export interface MatchOptions {locationId?:string;start?:{x:number;z:number;yaw:number};exploration?:boolean;mode?:MatchMode;bots?:boolean;}
+export interface MatchOptions {locationId?:string;start?:{x:number;z:number;yaw:number};exploration?:boolean;mode?:MatchMode;bots?:boolean;botDifficulty?:BotDifficulty;}
 function sectorSpawns(locationId:string) {
   const layout=SPAWN_LAYOUTS[locationId as keyof typeof SPAWN_LAYOUTS]??SPAWN_LAYOUTS[DEFAULT_LOCATION_ID];
   return {spawns:{blue:layout.spawns.blue.map(p=>({...p})),orange:layout.spawns.orange.map(p=>({...p}))},spawnYaws:{...layout.spawnYaws}};
@@ -165,6 +166,7 @@ export function createMatch(now: number, options:MatchOptions={}): Match {
   const match:Match={players:[],scores:{blue:0,orange:0},endsAt:time+MATCH_DURATION,winner:null,events:[],time,
     mode:options.exploration?"deathmatch":options.mode??"deathmatch",grenades:[],smokes:[],
     bots:options.bots===true&&!options.exploration,
+    botDifficulty:options.bots===true&&!options.exploration?normalizeBotDifficulty(options.botDifficulty):undefined,
     startedAt:time,round:1,winnerAt:0,nextId:1,eventId:0,seed:(time>>>0)||12345,
     rulesVersion:RULESET_VERSION,locationId:location.id,exploration:options.exploration??false,...sectorSpawns(location.id)};
   if(match.mode==="classic")match.classic=createClassicState(match);
@@ -173,6 +175,7 @@ export function createMatch(now: number, options:MatchOptions={}): Match {
 /** Legacy/network rooms remain human-only; bots require an explicit local match opt-in. */
 export function sanitizeMatch(match:Match):void {
   const allowBots=match.bots===true&&!match.exploration;
+  if(allowBots)match.botDifficulty=normalizeBotDifficulty(match.botDifficulty);
   const disallowedBots=!allowBots&&match.players.some(player=>player.bot);
   if(!disallowedBots&&match.rulesVersion===RULESET_VERSION)return;
   match.players=match.players.filter(player=>allowBots||!player.bot);
@@ -217,6 +220,20 @@ export function createBotMatch(now:number,options:MatchOptions&{name?:string;tea
   const match=createMatch(now,{...options,mode:options.mode??"classic",bots:true,exploration:false});
   const player=options.team==="spectator"?undefined:addPlayer(match,options.name??"PLAYER",options.team??"blue");
   fillBotTeams(match);return {match,playerId:player?.id??null};
+}
+/** Difficulty changes affect only local AI, without restarting the round or changing purchased equipment. */
+export function setBotDifficulty(match:Match,difficulty:unknown):boolean {
+  if(match.bots!==true||match.exploration)return false;
+  const next=normalizeBotDifficulty(difficulty);match.botDifficulty=next;
+  for(const player of match.players)if(player.bot){
+    resetBotTarget(player,match.time,BOT_DIFFICULTIES[next].reacquireMs);
+    player.intent={...ZERO_INPUT,yaw:player.yaw,pitch:player.pitch};player.aiming=false;player.botDecisionAt=match.time;
+  }
+  if(!BOT_DIFFICULTIES[next].attackGrenades){
+    const bots=new Set(match.players.filter(player=>player.bot).map(player=>player.id));
+    match.grenades=match.grenades.filter(grenade=>grenade.kind==='smoke'||!bots.has(grenade.ownerId));
+  }
+  return true;
 }
 export function removePlayer(match: Match, playerId: string) {
   sanitizeMatch(match);
@@ -393,6 +410,7 @@ function unobstructed(ax:number,ay:number,az:number,bx:number,by:number,bz:numbe
 function damagePlayer(match:Match,victim:Player,attacker:Player|undefined,rawDamage:number,headshot:boolean,allowArmor=true,killReward?:number) {
   if(victim.health<=0||victim.invulnerableUntil>match.time||attacker?.team===victim.team)return;
   let damage=rawDamage;
+  if(match.bots===true&&!match.exploration&&attacker?.bot&&!victim.bot)damage*=BOT_DIFFICULTIES[normalizeBotDifficulty(match.botDifficulty)].humanDamageScale;
   if(allowArmor&&victim.armor>0){const absorbed=Math.min(victim.armor,damage*.4);victim.armor=Math.max(0,victim.armor-absorbed);damage-=absorbed;}
   victim.health=Math.max(0,Math.round((victim.health-damage)*100)/100);
   event(match,"hit",attacker,{targetId:victim.id,x:victim.x,y:victim.y+(victim.crouched?.9:1.2),z:victim.z,headshot});
@@ -555,6 +573,8 @@ function executeInput(match:Match,player:Player,raw:Partial<Input>) {
   if(match.mode==="classic")tickClassicState(match);
 }
 function botCanSee(match:Match,player:Player,target:Player):boolean {
+  const tuning=BOT_DIFFICULTIES[normalizeBotDifficulty(match.botDifficulty)];
+  if(!botTargetInView(player,target,tuning))return false;
   const ay=player.y+playerEyeHeight(player),by=target.y+(target.crouched?.7:1.06);
   if(!unobstructed(player.x,ay,player.z,target.x,by,target.z))return false;
   const dx=target.x-player.x,dy=by-ay,dz=target.z-player.z,lengthSquared=dx*dx+dy*dy+dz*dz||1;
@@ -591,6 +611,11 @@ export function advanceMatch(match:Match,now:number) {
       if(p.health<=0){if(match.mode!=="classic"&&p.respawnAt<=match.time)spawn(match,p);else continue;}
       if(p.reloadUntil&&p.reloadUntil<=match.time){const count=Math.min(WEAPONS[p.weapon].magazine-p.ammo,p.reserve);p.ammo+=count;p.reserve-=count;p.reloadUntil=0;}
       if(p.bot)updateBot(match,p);
+      if(p.bot&&p.botState&&p.intent.shoot){
+        const target=match.players.find(player=>player.id===p.botState?.enemyId&&player.health>0);
+        if(!target||!botCanSee(match,p,target))resetBotTarget(p,match.time,BOT_DIFFICULTIES[normalizeBotDifficulty(match.botDifficulty)].reacquireMs);
+        else if(match.time>=p.botState.burstUntil){p.intent.shoot=false;p.intent.secondary=false;}
+      }
       const input=match.time-p.lastInputAt<INPUT_EXPIRY?p.intent:{...ZERO_INPUT};
       movePlayer(match,p,input,delta/1000);
       if(input.reload)beginReload(match,p);
@@ -616,7 +641,7 @@ export function shiftMatchTime(match:Match,elapsedMs:number):void {
     for(const key of ['respawnAt','reloadUntil','invulnerableUntil','lastShotAt','lastInputAt','botDecisionAt','nextBotShotAt','attackRecoveryUntil','flashedUntil'] as const){
       if(player[key])player[key]+=delay;
     }
-    if(player.botState)for(const key of ['plannedAt','lastProgressAt','seenAt','lastSeenAt','burstUntil','nextUtilityAt'] as const){
+    if(player.botState)for(const key of ['plannedAt','lastProgressAt','seenAt','lastSeenAt','burstUntil','nextUtilityAt','readyAt','reacquireUntil'] as const){
       if(player.botState[key])player.botState[key]+=delay;
     }
   }

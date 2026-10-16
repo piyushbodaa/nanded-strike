@@ -9,11 +9,14 @@ export interface WeaponPose {
   aim?: number;
   /** The last knife attack was a secondary forward stab rather than a primary slash. */
   secondary?: boolean;
+  /** Override the system preference when testing or supplying an in-game preference. */
+  reducedMotion?: boolean;
 }
 const ease=(x:number)=>{const t=THREE.MathUtils.clamp(x,0,1);return t*t*(3-2*t);};
 
 /** Original articulated view model. Reload, slide, magazine and support hand animate separately. */
 export function createWeaponView(camera:THREE.Camera) {
+  const motionPreference=typeof window!=='undefined'&&typeof window.matchMedia==='function'?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
   const group=new THREE.Group(),rifle=new THREE.Group(),pistol=new THREE.Group(),knife=new THREE.Group();
   group.name='First-person weapon';rifle.name='AR30 rifle';pistol.name='P12 handgun';knife.name='Combat knife';group.add(rifle,pistol,knife);camera.add(group);
   const materials:THREE.Material[]=[],geometries:THREE.BufferGeometry[]=[];
@@ -116,12 +119,16 @@ export function createWeaponView(camera:THREE.Camera) {
   const flashMaterial=new THREE.MeshBasicMaterial({color:'#ffd690',transparent:true,opacity:.9,depthWrite:false});materials.push(flashMaterial);
   const muzzle=add(group,new THREE.ConeGeometry(.047,.17,7),flashMaterial,0,.025,-1.05);muzzle.rotation.x=-Math.PI/2;muzzle.visible=false;
   const fill=new THREE.PointLight('#eef4ff',.65,3,1);fill.position.set(-.2,.45,.25);group.add(fill);
-  let cycle=0,current:Weapon='rifle',swap=1,lastReload=false;
+  let cycle=0,current:Weapon='rifle',drawProgress=1,lastReload=false,wasAlive=false;
+  const drawDuration:Record<Weapon,number>={rifle:.28,pistol:.22,knife:.24,smg:.24,sniper:.32,shotgun:.28};
+  function resetDraw(){drawProgress=0;wasAlive=false;}
   function update(pose:WeaponPose,dt:number) {
     group.visible=pose.alive;
-    if(!pose.alive)return;
-    if(current!==pose.weapon){current=pose.weapon;swap=0;}
-    swap=Math.min(1,swap+dt*5.5);for(const [weapon,model] of Object.entries(models))model.visible=current===weapon;
+    if(!pose.alive){wasAlive=false;return;}
+    if(!wasAlive||current!==pose.weapon){current=pose.weapon;drawProgress=0;}wasAlive=true;
+    const reducedMotion=pose.reducedMotion??motionPreference?.matches??false;
+    drawProgress=Math.min(1,drawProgress+Math.max(0,dt)/drawDuration[current]);
+    for(const [weapon,model] of Object.entries(models))model.visible=current===weapon;
     const shotAge=Math.max(0,pose.time-pose.shotAt)/1000;
     const melee=current==='knife';
     const primary=!melee&&current!=='pistol';
@@ -135,11 +142,15 @@ export function createWeaponView(camera:THREE.Camera) {
     const boltPull=reloading?Math.sin(ease((progress-.76)/.14)*Math.PI)*.05:0;
     cycle+=dt*(pose.speed>0.1?Math.min(12,pose.speed*2.1):1.3);
     const aim=melee||reloading||pose.sprint?0:THREE.MathUtils.clamp(pose.aim??0,0,1);
-    const moveWeight=THREE.MathUtils.clamp(pose.speed/5,0,1)*(1-aim),bob=Math.sin(cycle)*.005*moveWeight;
+    // Equipping is presentation only: sights, an attack or reloading take over
+    // immediately. Never queue a model swap or delay a live game input.
+    if(reducedMotion||aim>0||reloading||(pose.shotAt>0&&shotAge<.32))drawProgress=1;
+    const draw=(1-ease(drawProgress))*(1-aim);
+    const moveWeight=reducedMotion?0:THREE.MathUtils.clamp(pose.speed/5,0,1)*(1-aim),bob=Math.sin(cycle)*.005*moveWeight;
     const hipX=primary?.24:melee?.28:.20;
     const sightY=current==='rifle'||current==='sniper'?-.214:current==='smg'?-.1535:current==='shotgun'?-.076:-.100;
-    group.position.set(THREE.MathUtils.lerp(hipX,0,aim)-slash*.34-stab*.15,THREE.MathUtils.lerp(-.245,sightY,aim)+Math.abs(Math.cos(cycle))*.005*moveWeight-.25*(1-ease(swap))-.065*reloadLift+slash*.1+stab*.04,THREE.MathUtils.lerp(melee?-.60:-.72,primary?-.56:-.48,aim)+recoil*.05-slash*.17-stab*.48);
-    group.rotation.set(recoil*.045*(1-aim*.55)+(pose.sprint?.22:0)-reloadLift*.12+slash*.15,.005*(1-aim)+reloadLift*.22-slash*.45,-reloadLift*.33+bob+slash*.8);
+    group.position.set(THREE.MathUtils.lerp(hipX,0,aim)+draw*.035-slash*.34-stab*.15,THREE.MathUtils.lerp(-.245,sightY,aim)+Math.abs(Math.cos(cycle))*.005*moveWeight-draw*.27-.065*reloadLift+slash*.1+stab*.04,THREE.MathUtils.lerp(melee?-.60:-.72,primary?-.56:-.48,aim)+draw*.08+recoil*.05-slash*.17-stab*.48);
+    group.rotation.set(draw*.12+recoil*.045*(1-aim*.55)+(pose.sprint?.22:0)-reloadLift*.12+slash*.15,.005*(1-aim)+draw*.045+reloadLift*.22-slash*.45,-draw*.13-reloadLift*.33+bob+slash*.8);
     knife.rotation.set(-.12*(1-stab),0,-.23*(1-stab));
     rifleMagazine.position.set(-magOut*.06,-.15-magOut*.31,-.18+magOut*.12);rifleMagazine.rotation.z=-magOut*.18;
     sniperMagazine.position.copy(rifleMagazine.position);sniperMagazine.rotation.copy(rifleMagazine.rotation);
@@ -152,5 +163,5 @@ export function createWeaponView(camera:THREE.Camera) {
     muzzle.position.z=current==='sniper'?-1.41:current==='smg'?-.78:primary?-1.07:-.37;muzzle.visible=!melee&&pose.shotAt>0&&shotAge<.042&&!reloading;muzzle.rotation.z=pose.shotAt%7;
     if(lastReload&&!reloading){rifleMagazine.rotation.z=0;pistolMagazine.position.y=-.17;}lastReload=reloading;
   }
-  return {group,muzzle,update,dispose(){camera.remove(group);for(const geometry of geometries)geometry.dispose();for(const m of materials)m.dispose();}};
+  return {group,muzzle,update,resetDraw,dispose(){camera.remove(group);for(const geometry of geometries)geometry.dispose();for(const m of materials)m.dispose();}};
 }
