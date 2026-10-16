@@ -124,6 +124,45 @@ test('persisted bot and orphan states are removed and old spawns migrate on the 
   } finally { f.cleanup(); }
 });
 
+test('online endpoints reject local bot opt-in before creating or changing a durable room',async()=>{
+  const f=fixture();
+  try {
+    for(const action of ['create','quickjoin'])for(const bots of [true,1,'true',{},null])
+      await f.request({action,name:'BOT ATTEMPT',bots},400);
+    assert.equal(await f.stores[0].get(PUBLIC_ROOM),null);
+    const host=await f.request({action:'create',name:'HUMAN',bots:false},201);
+    const before=(await f.stores[0].get(host.room))!;
+    await f.request({action:'join',room:host.room,name:'BOT ATTEMPT',bots:true},400,1);
+    await f.request({action:'input',room:host.room,token:host.token,bots:true,input:idle(0)},400,1);
+    assert.deepEqual(await f.stores[1].get(host.room),before);
+    const peer=await f.request({action:'join',room:host.room,name:'HUMAN PEER',bots:false},200,1);
+    assert.equal(peer.state.players.length,2);assert.ok(peer.state.players.every(player=>!player.bot));
+  } finally {f.cleanup();}
+});
+
+test('a persisted local bots flag never enables AI in an online room across API instances',async()=>{
+  const f=fixture();
+  try {
+    for(const mode of ['classic','deathmatch'] as const){
+      const host=await f.request({action:'create',name:'HUMAN HOST',mode},201);
+      const row=(await f.stores[0].get(host.room))!,state=JSON.parse(row.state) as Match;
+      state.bots=true;
+      state.players.push({...state.players[0],id:'copied-local-bot',name:'LOCAL BOT',team:'orange',bot:true});
+      await f.stores[0].compareAndSwap({...row,state:JSON.stringify(state),revision:row.revision+1},row.revision);
+      const joined=await f.request({action:'join',room:host.room,name:'SECOND HUMAN'},200,1);
+      assert.equal(joined.state.bots,false);
+      assert.deepEqual(joined.state.players.map(player=>player.id),[host.playerId,joined.playerId]);
+      assert.ok(joined.state.players.every(player=>!player.bot));
+      f.advance(250);
+      const polled=await f.request({action:'input',room:host.room,token:host.token,input:idle(0)},200,0);
+      assert.equal(polled.state.bots,false);assert.equal(polled.state.players.length,2);
+      const persisted=JSON.parse((await f.stores[1].get(host.room))!.state) as Match;
+      assert.equal(persisted.bots,false);assert.ok(persisted.players.every(player=>!player.bot));
+      assert.ok(!JSON.stringify(persisted).includes('LOCAL BOT'));
+    }
+  } finally {f.cleanup();}
+});
+
 test('public match expires abandoned sessions and resets empty or expired rooms',async()=>{
   const f=fixture();
   try {
