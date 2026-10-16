@@ -1,11 +1,13 @@
 import { botLineWalkable, findBotPath } from './bot-navigation';
 import type { Input, Match, Player, PurchaseId, Weapon } from './simulation';
+import { BOT_DIFFICULTIES, normalizeBotDifficulty, type BotTuning } from './bot-difficulty';
 
 type Point = {x:number;z:number};
 export interface BotState {
   path:Point[];pathIndex:number;goal:Point|null;plannedAt:number;
   lastPosition:Point;lastProgressAt:number;enemyId?:string;seenAt:number;lastSeenAt:number;lastSeen?:Point;
   burstUntil:number;nextUtilityAt:number;patrolIndex:number;
+  readyAt:number;reacquireUntil:number;trackingYaw?:number;trackingPitch?:number;
   action:'buying'|'moving'|'engaging'|'planting'|'defusing'|'retrieving'|'guarding'|'blinded'|'waiting';
 }
 export interface BotContext {
@@ -22,19 +24,35 @@ const primary=(weapon:Weapon)=>weapon!=='pistol'&&weapon!=='knife';
 function idle(player:Player):Input {
   return {seq:player.lastSeq+1,forward:0,strafe:0,yaw:player.yaw,pitch:0,shoot:false,reload:false,sprint:false,jump:false,aim:false,crouch:false,walk:false,secondary:false,interact:false};
 }
-function stateFor(match:Match,player:Player):BotState {
-  return player.botState??(player.botState={path:[],pathIndex:0,goal:null,plannedAt:0,lastPosition:{x:player.x,z:player.z},lastProgressAt:match.time,
-    seenAt:0,lastSeenAt:0,burstUntil:0,nextUtilityAt:match.time+6000,patrolIndex:0,action:'waiting'});
+function newState(time:number,player:Player):BotState {
+  return {path:[],pathIndex:0,goal:null,plannedAt:0,lastPosition:{x:player.x,z:player.z},lastProgressAt:time,
+    seenAt:0,lastSeenAt:0,burstUntil:0,nextUtilityAt:time+6000,patrolIndex:0,readyAt:0,reacquireUntil:0,action:'waiting'};
 }
-function buyChoice(player:Player):PurchaseId|undefined {
+function stateFor(match:Match,player:Player):BotState {
+  const state=player.botState??(player.botState=newState(match.time,player));
+  state.readyAt??=0;state.reacquireUntil??=0;return state;
+}
+export function resetBotTarget(player:Player,time:number,reacquireDelay:number):void {
+  const state=player.botState??(player.botState=newState(time,player));
+  state.enemyId=undefined;state.seenAt=0;state.lastSeenAt=0;state.burstUntil=0;state.readyAt=0;
+  state.reacquireUntil=Math.max(state.reacquireUntil??0,time+reacquireDelay);
+  state.trackingYaw=undefined;state.trackingPitch=undefined;
+  player.nextBotShotAt=state.reacquireUntil;player.botTarget=-1;player.aiming=false;
+  player.intent.shoot=false;player.intent.secondary=false;player.intent.aim=false;
+}
+export function botTargetInView(player:Player,target:Player,tuning:Readonly<BotTuning>):boolean {
+  const desiredYaw=Math.atan2(-(target.x-player.x),-(target.z-player.z));
+  return distance(player,target)<=tuning.sightRange&&Math.abs(angleDifference(desiredYaw,player.yaw))<=tuning.fieldOfView*Math.PI/360;
+}
+function buyChoice(player:Player,tuning:Readonly<BotTuning>):PurchaseId|undefined {
   if(!player.inventory.some(primary)){
     if(player.money>=2700)return 'rifle';
     if(player.money>=1250)return 'smg';
   }
   if(player.team==='blue'&&!player.defuseKit&&player.money>=400)return 'kit';
   if(player.armor<70&&player.money>=1000)return 'armor';
-  if(player.grenades.he===0&&player.money>=300)return 'he';
-  if(player.grenades.flash===0&&player.money>=200)return 'flash';
+  if(tuning.attackGrenades&&player.grenades.he===0&&player.money>=300)return 'he';
+  if(tuning.attackGrenades&&player.grenades.flash===0&&player.money>=200)return 'flash';
   if(player.grenades.smoke===0&&player.money>=300)return 'smoke';
   return undefined;
 }
@@ -73,14 +91,14 @@ function navigate(match:Match,player:Player,state:BotState,goal:Point,input:Inpu
 
 /** Decisions only produce ordinary game inputs; the simulation retains movement, damage and money authority. */
 export function decideBot(match:Match,player:Player,context:BotContext):Input {
-  const input=idle(player),state=stateFor(match,player);
+  const input=idle(player),state=stateFor(match,player),tuning=BOT_DIFFICULTIES[normalizeBotDifficulty(match.botDifficulty)];
   if(player.health<=0||match.winner){state.action='waiting';return input;}
   if(match.mode==='classic'&&match.classic?.phase!=='live'){
-    state.action=context.canBuy?'buying':'waiting';if(context.canBuy)input.buy=buyChoice(player);return input;
+    state.action=context.canBuy?'buying':'waiting';if(context.canBuy)input.buy=buyChoice(player,tuning);return input;
   }
   if(player.flashedUntil>match.time+400){state.action='blinded';return input;}
   const friends=match.players.filter(candidate=>candidate.team===player.team&&candidate.health>0),slot=Math.max(0,friends.findIndex(candidate=>candidate.id===player.id));
-  const visible=match.players.filter(candidate=>candidate.team!==player.team&&candidate.health>0&&distance(candidate,player)<95&&context.canSee(candidate))
+  const visible=match.players.filter(candidate=>candidate.team!==player.team&&candidate.health>0&&botTargetInView(player,candidate,tuning)&&context.canSee(candidate))
     .sort((a,b)=>distance(a,player)-distance(b,player));
   const enemy=visible[0],enemyRange=enemy?distance(enemy,player):Infinity;
   const classic=match.classic,bomb=classic?.bomb;
@@ -119,7 +137,9 @@ export function decideBot(match:Match,player:Player,context:BotContext):Input {
   }
   if(enemy){
     if(state.enemyId!==enemy.id){
-      state.enemyId=enemy.id;state.seenAt=match.time;state.burstUntil=0;player.nextBotShotAt=match.time+350+context.random()*250;
+      state.enemyId=enemy.id;state.seenAt=match.time;state.burstUntil=0;
+      state.readyAt=Math.max(state.reacquireUntil,match.time+tuning.reactionMinMs+context.random()*(tuning.reactionMaxMs-tuning.reactionMinMs));
+      player.nextBotShotAt=state.readyAt;state.trackingYaw=player.yaw;state.trackingPitch=player.pitch;
     }
     state.lastSeenAt=match.time;state.lastSeen={x:enemy.x,z:enemy.z};state.action='engaging';
     const weapon=combatWeapon(player,enemyRange);if(weapon!==player.weapon)input.weapon=weapon;
@@ -127,13 +147,18 @@ export function decideBot(match:Match,player:Player,context:BotContext):Input {
     if(!weaponAmmo&&weapon!=='knife'){input.reload=true;return input;}
     const desiredYaw=Math.atan2(-(enemy.x-player.x),-(enemy.z-player.z));
     const aimY=enemy.y+(enemy.crouched?.7:1.06),originY=player.y+context.eyeHeight(player);
-    const error=(.0015+.008*Math.max(0,1-(match.time-state.seenAt)/1800))*(player.flashedUntil>match.time?4:1);
-    input.yaw=player.yaw+clamp(angleDifference(desiredYaw,player.yaw),-.8,.8)+(context.random()-.5)*error*2;
-    input.pitch=Math.atan2(aimY-originY,enemyRange)+(context.random()-.5)*error*2;
+    const desiredPitch=Math.atan2(aimY-originY,enemyRange);
+    const error=(tuning.aimError+tuning.initialAimError*Math.max(0,1-(match.time-state.seenAt)/1800))*(player.flashedUntil>match.time?4:1);
+    state.trackingYaw=(state.trackingYaw??player.yaw)+clamp(angleDifference(desiredYaw,state.trackingYaw??player.yaw),-tuning.turnPerDecision,tuning.turnPerDecision);
+    state.trackingPitch=(state.trackingPitch??player.pitch)+clamp(desiredPitch-(state.trackingPitch??player.pitch),-tuning.turnPerDecision,tuning.turnPerDecision);
+    input.yaw=state.trackingYaw+(context.random()-.5)*error*2;
+    input.pitch=state.trackingPitch+(context.random()-.5)*error*2;
     input.aim=weapon!=='knife';
-    const aligned=Math.abs(angleDifference(input.yaw,desiredYaw))<.035;
+    // Readiness uses the tracking direction, before aim error: forgiving bots must fire misses too.
+    const aligned=Math.abs(angleDifference(state.trackingYaw,desiredYaw))<.035&&Math.abs(state.trackingPitch-desiredPitch)<.08;
     if(match.time>=player.nextBotShotAt&&match.time>=state.burstUntil){
-      state.burstUntil=match.time+250+context.random()*250;player.nextBotShotAt=state.burstUntil+180+context.random()*230;
+      state.burstUntil=match.time+tuning.burstMinMs+context.random()*(tuning.burstMaxMs-tuning.burstMinMs);
+      player.nextBotShotAt=state.burstUntil+tuning.pauseMinMs+context.random()*(tuning.pauseMaxMs-tuning.pauseMinMs);
     }
     input.shoot=aligned&&match.time<state.burstUntil&&player.reloadUntil===0&&enemyRange<context.weapons[weapon].range;
     if(weapon==='knife'){
@@ -142,13 +167,13 @@ export function decideBot(match:Match,player:Player,context:BotContext):Input {
       navigate(match,player,state,state.lastSeen,input,8);input.sprint=false;input.aim=false;
     }
     // Utility is reserved for clear engagements; buying and throwing still use ordinary inventory checks.
-    if(match.time>=state.nextUtilityAt&&enemyRange>10&&enemyRange<24&&player.reloadUntil===0&&aligned){
+    if(tuning.attackGrenades&&match.time>=state.readyAt&&match.time>=state.nextUtilityAt&&enemyRange>10&&enemyRange<24&&player.reloadUntil===0&&aligned){
       const kind=player.grenades.he>0?'he':player.grenades.flash>0?'flash':undefined;
       if(kind){input.grenade=kind;input.shoot=false;input.pitch=-.12;state.nextUtilityAt=match.time+9000;}
     }
     return input;
   }
-  if(state.enemyId&&match.time-state.lastSeenAt>1600){state.enemyId=undefined;state.burstUntil=0;}
+  if(state.enemyId)resetBotTarget(player,match.time,tuning.reacquireMs);
   if(player.ammo<context.weapons[player.weapon].magazine*.4&&player.reserve>0&&player.reloadUntil===0)input.reload=true;
   if(!objective){
     const enemyTeam=player.team==='blue'?'orange':'blue',patrolTeam=state.patrolIndex%2===0?enemyTeam:player.team,spawns=match.spawns?.[patrolTeam];
@@ -156,7 +181,7 @@ export function decideBot(match:Match,player:Player,context:BotContext):Input {
   }
   if(objective){
     if(navigate(match,player,state,objective,input,arrival)){
-      state.action='guarding';input.yaw=player.yaw+.16;
+      state.action='guarding';input.yaw=player.yaw+Math.min(.16,tuning.turnPerDecision*.5);
       if(match.mode==='deathmatch'){
         state.patrolIndex++;state.goal=null;
       }

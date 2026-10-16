@@ -50,7 +50,7 @@ test('CT and T local games fill exactly four players per side; watching adds no 
 });
 
 test('bot input decisions are bounded, buy real equipment and cannot be overwritten through human input',()=>{
-  const {match}=createBotMatch(START,{team:'spectator'});run(match,10_000);
+  const {match}=createBotMatch(START,{team:'spectator',botDifficulty:'hard'});run(match,10_000);
   for(const player of match.players){
     assert.ok(player.lastSeq>=35&&player.lastSeq<=51,'decisions should run at roughly five per second');
     assert.ok(player.money>=0&&player.money<800);assert.ok(player.inventory.includes('pistol'));
@@ -64,7 +64,7 @@ test('bot input decisions are bounded, buy real equipment and cannot be overwrit
 
 test('bots play complete autonomous rounds on every unmodified Nanded sector without teleporting',async context=>{
   for(const location of LOCATIONS)await context.test(location.name,()=>{
-    const {match}=createBotMatch(START,{team:'spectator',locationId:location.id});
+    const {match}=createBotMatch(START,{team:'spectator',locationId:location.id,botDifficulty:'hard'});
     const counts:Partial<Record<GameEvent['type'],number>>={};
     run(match,250_000,events=>{for(const event of events)counts[event.type]=(counts[event.type]??0)+1;},true);
     assert.ok(match.round>1,`${location.name} did not complete a round`);
@@ -76,7 +76,7 @@ test('bots play complete autonomous rounds on every unmodified Nanded sector wit
 });
 
 test('classic bots plant, retrieve and defuse bombs, switch sides, win a match and restart autonomously',()=>{
-  const {match}=createBotMatch(START,{team:'spectator',locationId:'bhagya'});
+  const {match}=createBotMatch(START,{team:'spectator',locationId:'bhagya',botDifficulty:'hard'});
   const names=new Map(match.players.map(player=>[player.id,player.name])),initialTeams=new Map(match.players.map(player=>[player.id,player.team]));
   const counts:Partial<Record<GameEvent['type'],number>>={};let won=false,restarted=false,switched=false;
   run(match,900_000,events=>{
@@ -92,7 +92,7 @@ test('classic bots plant, retrieve and defuse bombs, switch sides, win a match a
 });
 
 test('deathmatch bots reload, score kills, respawn and keep playing after victory',()=>{
-  const {match}=createBotMatch(START,{team:'spectator',mode:'deathmatch'});const counts:Partial<Record<GameEvent['type'],number>>={};
+  const {match}=createBotMatch(START,{team:'spectator',mode:'deathmatch',botDifficulty:'hard'});const counts:Partial<Record<GameEvent['type'],number>>={};
   run(match,300_000,events=>{for(const event of events)counts[event.type]=(counts[event.type]??0)+1;});
   assert.ok((counts.kill??0)>=25);assert.ok((counts.reload??0)>0);assert.ok((counts.respawn??0)>8);
   assert.ok(match.round>1);assert.equal(match.players.length,8);assert.ok(match.players.every(player=>player.bot));
@@ -123,7 +123,7 @@ test('pausing shifts bot reaction and navigation clocks with plant, defuse and r
 
 test('a human can join either side while teammates and enemies still move and fight independently',()=>{
   for(const team of ['blue','orange'] as Team[]){
-    const {match,playerId}=createBotMatch(START,{team});const human=match.players.find(player=>player.id===playerId)!;
+    const {match,playerId}=createBotMatch(START,{team,botDifficulty:'hard'});const human=match.players.find(player=>player.id===playerId)!;
     const bots=match.players.filter(player=>player.bot),initial=new Map(bots.map(player=>[player.id,{x:player.x,z:player.z}]));
     run(match,30_000);
     assert.ok(bots.some(player=>{const before=initial.get(player.id)!;return Math.hypot(player.x-before.x,player.z-before.z)>10;}));
