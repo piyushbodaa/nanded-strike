@@ -1,0 +1,75 @@
+{
+  "title": "Photograph references for recognisable Nanded landmarks",
+  "accessed": "2026-10-16",
+  "method": "Inspected actual photographs before modelling. Meshes and lettering were constructed originally in code; source photographs are linked for verification but are not redistributed or used as image textures. These are recognisable approximations, not photogrammetry. Dimensions, small sculptural details and exact frontage offsets are estimated.",
+  "models": [
+    {
+      "id": "bhagya-kaman",
+      "name": "Bhagya Nagar Kaman",
+      "coordinate": {
+        "latitude": 19.17722,
+        "longitude": 77.3093456,
+        "x": -184.47,
+        "z": -325.06
+      },
+      "locationBasis": "Public place coordinate agrees within five metres with the OSM Bhagya Nagar entrance junction. Nearby OSM node7635002096 explicitly identifies Bhagya Nagar Kaman in its address.",
+      "photoPage": "https://krotravel.com/itinerary/nanded-waghala",
+      "photo": "https://krotravel.com/storage/public/cities/nanded-waghala/gallery/04_attraction_bhagya-nagar-kaman__ChIJ8QaWYdzX0TsRW8Oay9ckK7Y.webp",
+      "observed": [
+        "Large freestanding Marathi भाग्यनगर letters",
+        "Cream horizontal society-name beam",
+        "Dark stone central pier",
+        "Orange and bronze relief with standing and seated figures, trees, and a forward bust on a dark pedestal",
+        "Two flanking openings",
+        "Paired lantern-style lights"
+      ],
+      "estimated": "Overall width13.2m and height7.4m; central pier2.8m wide; side support positions are inferred because the reference photograph crops the outer edges. Relief is simplified and no unverified identity is assigned to the bust.",
+      "rejectedReference": "Kupi.com's AI illustration was explicitly excluded; its caption identifies it as AI and its title incorrectly mentions Hyderabad."
+    },
+    {
+      "id": "yeshwant-entrance",
+      "name": "Yeshwant College entrance",
+      "coordinate": {
+        "latitude": 19.1697908,
+        "longitude": 77.3095022,
+        "x": -168,
+        "z": 502
+      },
+      "locationBasis": "Estimated gate position at the eastern public-road frontage beside the southern academic footprint cluster. The official college homepage embeds a campus map centred at19.1698023434381,77.3091493977393. The source map does not survey the gate itself; exact entrance offset remains approximate.",
+      "officialLocation": "https://www.ymnnanded.in/",
+      "governmentAddress": "https://nanded.gov.in/en/public-utility/yeshwant-mahavidyalaya-nanded/",
+      "photoPage": "https://findmycollege.com/colleges/yeshwant-mahavidyalaya-nanded-13259/gallery",
+      "photo": "https://content.findmycollege.com/colleges/13259-yeshwant-mahavidyalaya-nanded-infrastructure-1777628300307-e72e3a6a-d37a-458f-b7db-f1de4c91f7ae.jpg",
+      "observed": [
+        "Two orange-red horizontally grooved piers",
+        "Broad cream rectangular lintel",
+        "Raised pale Marathi college lettering",
+        "Cream metal gate with rectilinear grid, diamonds and circular medallions"
+      ],
+      "estimated": "Gate width10.9m and height5.3m. Gates are shown open for passage, while the source photograph shows them closed. No building footprint was moved to accommodate the gate."
+    }
+  ],
+  "verifiedButNotCustomModelled": [
+    {
+      "name": "Workshop Corner municipal overhead water tank",
+      "evidence": "First-party bank and travel-office addresses and CensusIndia address list verify its presence; an unambiguous photograph and precise tower footprint have not been obtained.",
+      "sources": [
+        "https://www.svc.bank.in/sites/default/files/2025-05/AR_2024-25.pdf",
+        "https://sharmatravelsonline.com/contact_us",
+        "https://censusindia.gov.in/nada/index.php/catalog/47100/download/51345/Tender_Active_35.pdf"
+      ]
+    },
+    {
+      "name": "Government ITI / Mahatma Phule statue frontage",
+      "evidence": "Government prospectus verifies VIP Road near Mahatma Phule statue. Search images frequently depict other institutes; those have not been substituted.",
+      "source": "https://www.nimionlineadmission.in/2022/downloads/Amended%20CITS-Prospectus%202022%20%2818-8-2022%29.pdf"
+    },
+    {
+      "name": "Government Polytechnic Nanded",
+      "evidence": "Actual campus photograph inspected; precise photo-to-building identification still needed before replacing a footprint with a bespoke facade.",
+      "photo": "https://cache.careers360.mobi/media/colleges/social-media/media-gallery/11785/2019/3/8/Campus%20View%20of%20Government%20Polytechnic%20Nanded_Campus-View.png",
+      "primarySitePlan": "https://gpnanded.org.in/files/misc/MD_30AUG2024.pdf"
+    }
+  ],
+  "status": "Both models are integrated into the world renderer, with ground collision for piers, plinths and gate leaves. Overhead lintels do not create invisible ground barriers."
+}

@@ -4,6 +4,8 @@
 import data from './geodata.json';
 import { DEFAULT_LOCATION_ID } from './locations';
 import SPAWN_LAYOUTS from './spawn-layouts.json';
+import { LANDMARK_COLLIDERS } from './landmark-data';
+import { touchesSolid } from './geometry';
 export { LOCATIONS, DEFAULT_LOCATION_ID, LOCATION } from './locations';
 export type MapPoint = { x:number; z:number };
 export type Collider = MapPoint & { w:number; d:number; h:number; polygon?:MapPoint[] };
@@ -19,8 +21,9 @@ export const COVER:(Collider&{kind:'crate'|'barrels'|'cart'|'planter'|'car'|'bar
 export const UTILITY_POLES:MapPoint[]=[];
 export const LAMP_POLES:MapPoint[]=[];
 export const PLANT_POTS:MapPoint[]=[];
-export const COLLIDERS:Collider[]=BUILDINGS;
-export const WAYPOINTS:MapPoint[]=data.waypoints;
+export const COLLIDERS:Collider[]=[...BUILDINGS,...LANDMARK_COLLIDERS];
+// Landmark piers change walkability, never the underlying source street lines.
+export const WAYPOINTS:MapPoint[]=data.waypoints.filter(p=>!LANDMARK_COLLIDERS.some(c=>touchesSolid(p.x,p.z,c,.48)));
 // Prevalidated road clusters: eight slots/team, 80–160m separation, building occlusion.
 export const SPAWNS=SPAWN_LAYOUTS[DEFAULT_LOCATION_ID].spawns;
 export const SPAWN_YAWS=SPAWN_LAYOUTS[DEFAULT_LOCATION_ID].spawnYaws;

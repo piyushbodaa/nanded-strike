@@ -127,6 +127,13 @@ for id,name,label,lat,lon,description,yaw in anchors:
     # Choose a clear sampled public road point in the connected navigation graph.
     available=[p for p in waypoints if free_segment(p,(p[0]-math.sin(yaw)*3,p[1]-math.cos(yaw)*3))]
     p=min(available,key=lambda p:math.dist(p,desired))
+    # Photo-referenced landmark viewpoints; geographic anchor coordinates stay documented.
+    if id=='bhagya':
+        p=(-187.8,-311.5);yaw=-.241
+        description='View Bhagya Nagar Kaman from the public road south of its entrance; the gate is reconstructed from an inspected photograph.'
+    if id=='baba':
+        yaw=1.913
+        description='Face the photo-referenced Yeshwant College entrance from its public-road approach in Baba Nagar.'
     locations.append({'id':id,'name':name,'label':label,**point(p),'yaw':yaw,'description':description,'latitude':lat,'longitude':lon,'sourceOffsetMetres':round(math.dist(p,desired),1)})
 
 data={'bounds':{'minX':round(xmin,2),'maxX':round(xmax,2),'minZ':round(zmin,2),'maxZ':round(zmax,2)},'roads':roads,'buildings':buildings,'surfaces':surfaces,'waypoints':[point(p) for p in waypoints]}

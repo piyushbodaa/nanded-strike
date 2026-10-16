@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BUILDINGS, MAP_BOUNDS, ROADS, SURFACES, type MapPoint } from './map';
 import { LOCATIONS } from './locations';
+import { createLandmarks } from './landmarks';
 
 const textureCache = new Map<string, THREE.Texture>();
 let texturePromise: Promise<void> | undefined;
@@ -182,12 +183,12 @@ export function createWorld(scene:THREE.Scene) {
     const width=Math.min(6.5,length-.3),geo=new THREE.PlaneGeometry(width,width/4);resources.push(geo);
     const mesh=new THREE.Mesh(geo,mat);mesh.position.set(x+nx*.05,Math.min(3.7,building.h-1),z+nz*.05);mesh.rotation.y=Math.atan2(nx,nz);tile(x,z).group.add(mesh);
   }
-  for(const l of LOCATIONS) {
+  for(const l of LOCATIONS.filter(l=>!['bhagya','baba'].includes(l.id))) {
     const b=[...BUILDINGS].filter(b=>b.w>4&&b.d>3).sort((a,b)=>Math.hypot(a.x-l.x,a.z-l.z)-Math.hypot(b.x-l.x,b.z-l.z))[0];
     if(b)sign(l.label,l.name.toUpperCase()+' · NANDED',b,l);
   }
   // Verified institutions get exterior wayfinding at their mapped footprints/campus frontage.
-  for(const campus of SURFACES.filter(s=>['993255388','912075883','1258365919'].includes(s.id))) {
+  for(const campus of SURFACES.filter(s=>['912075883','1258365919'].includes(s.id))) {
     const center={x:campus.points.reduce((v,p)=>v+p.x,0)/campus.points.length,z:campus.points.reduce((v,p)=>v+p.z,0)/campus.points.length};
     const b=[...BUILDINGS].filter(b=>b.w>8&&b.d>6).sort((a,b)=>Math.hypot(a.x-center.x,a.z-center.z)-Math.hypot(b.x-center.x,b.z-center.z))[0];
     const label=campus.id==='993255388'?'यशवंत महाविद्यालय':campus.id==='1258365919'?'शासकीय औद्योगिक प्रशिक्षण संस्था':'शासकीय तंत्रनिकेतन';
@@ -200,10 +201,12 @@ export function createWorld(scene:THREE.Scene) {
     const mesh=new THREE.Mesh(g,m);mesh.castShadow=m===walls||m===concrete;mesh.receiveShadow=true;t.group.add(mesh);resources.push(g);triangles+=b.positions.length/9;meshes++;
     b.positions.length=b.normals.length=b.uvs.length=b.colors.length=0;
   }
+  const landmarks=createLandmarks();root.add(landmarks.group);
+  landmarks.group.traverse(object=>{if(object instanceof THREE.Mesh){meshes++;triangles+=(object.geometry.index?.count??object.geometry.getAttribute('position').count)/3;}});
   const hemi=new THREE.HemisphereLight('#d5e6f4','#747567',1.65);root.add(hemi);
   const sun=new THREE.DirectionalLight('#fff3dc',2.8);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-72;sun.shadow.camera.right=72;sun.shadow.camera.top=72;sun.shadow.camera.bottom=-72;sun.shadow.camera.near=1;sun.shadow.camera.far=260;sun.shadow.bias=-.00012;sun.shadow.normalBias=.035;root.add(sun,sun.target);
   const initial=LOCATIONS[0];sun.position.set(initial.x-65,100,initial.z+45);sun.target.position.set(initial.x,0,initial.z);
-  root.userData.stats={buildings:BUILDINGS.length,roadPaths:ROADS.length,tiles:tiles.size,meshes,triangles};
+  root.userData.stats={buildings:BUILDINGS.length,roadPaths:ROADS.length,tiles:tiles.size,landmarks:landmarks.group.children.length,meshes,triangles};
   let lastX=Infinity,lastZ=Infinity;
   return {
     update(_time:number,focus?:MapPoint) {
@@ -211,8 +214,9 @@ export function createWorld(scene:THREE.Scene) {
       if(Math.hypot(p.x-lastX,p.z-lastZ)<12)return;
       lastX=p.x;lastZ=p.z;
       for(const t of tiles.values())t.group.visible=Math.hypot(t.x-p.x,t.z-p.z)<790;
+      for(const landmark of landmarks.group.children)landmark.visible=Math.hypot(landmark.position.x-p.x,landmark.position.z-p.z)<790;
       const sx=Math.round(p.x/8)*8,sz=Math.round(p.z/8)*8;sun.position.set(sx-65,100,sz+45);sun.target.position.set(sx,0,sz);sun.target.updateMatrixWorld();
     },
-    dispose(){scene.remove(root);for(const resource of resources)resource.dispose();for(const m of materials)m.dispose();sun.shadow.map?.dispose();},
+    dispose(){landmarks.dispose();scene.remove(root);for(const resource of resources)resource.dispose();for(const m of materials)m.dispose();sun.shadow.map?.dispose();},
   };
 }

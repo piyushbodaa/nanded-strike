@@ -7,7 +7,8 @@ import {SpatialGrid} from '../lib/spatial';
 import {raySolid,touchesSolid} from '../lib/geometry';
 type Point={x:number,z:number};const cg=new SpatialGrid(COLLIDERS);const dist=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.z-b.z);
 function walk(p:Point){return p.x>MAP_BOUNDS.minX+.4&&p.x<MAP_BOUNDS.maxX-.4&&p.z>MAP_BOUNDS.minZ+.4&&p.z<MAP_BOUNDS.maxZ-.4&&!cg.around(p.x,p.z,.42).some(c=>touchesSolid(p.x,p.z,c,.42));}
-function clear(a:Point,b:Point,padding=.42,height=.6){const d=dist(a,b);const dx=(b.x-a.x)/d,dz=(b.z-a.z)/d;return !cg.along(a.x,a.z,dx,dz,d,padding).some(c=>raySolid(a.x,height,a.z,dx,0,dz,c,padding)<d);}
+// Ground-level clearance must include short landmark plinths as well as tall walls.
+function clear(a:Point,b:Point,padding=.42,height=.01){const d=dist(a,b);const dx=(b.x-a.x)/d,dz=(b.z-a.z)/d;return !cg.along(a.x,a.z,dx,dz,d,padding).some(c=>raySolid(a.x,height,a.z,dx,0,dz,c,padding)<d);}
 function slots(base:Point,yaw:number){const out:Point[]=[];for(const back of [0,3,6,-3,-6])for(const side of [0,-2.8,2.8,-5.6,5.6]){const p={x:base.x+Math.sin(yaw)*back+Math.cos(yaw)*side,z:base.z+Math.cos(yaw)*back-Math.sin(yaw)*side};const ahead={x:p.x-Math.sin(yaw)*6,z:p.z-Math.cos(yaw)*6};if(walk(p)&&walk(ahead)&&clear(p,ahead)&&out.every(q=>dist(p,q)>2.5))out.push(p);if(out.length===8)return out;}return null;}
 type Layout={spawns:{blue:Point[];orange:Point[]};spawnYaws:{blue:number;orange:number}};
 const output:Record<string,Layout>={};
