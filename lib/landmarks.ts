@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LANDMARKS } from './landmark-data';
+import { drawIibFacade } from './iib-facade';
+import { drawKonaleFacade, drawRccFacade } from './coaching-facades';
 
 /** Photo-referenced exterior structures, isolated from the geographic base renderer.
  * Original mesh construction; no copyrighted source photo is bundled or used as a decal. */
@@ -77,7 +79,7 @@ export function createLandmarks() {
     sphere(x,3.83,1.5,.13,'#303332',.7,1.4,.7);
     for(const side of [-1,1]){rail([x,3.48,1.5],[x+side*.28,3.58,1.5],.045,'#303332');box(x+side*.28,3.48,1.5,.2,.4,.2,'#eee3b8');box(x+side*.28,3.71,1.5,.27,.07,.27,'#333632');}
    }
-  } else {
+  } else if(landmark.id==='yeshwant-entrance') {
    const brick='#ad4b2e',cream='#d9d1b9',metal='#d4cba6';
    for(const x of [-4.25,4.25]){
     box(x,2.15,0,.92,4.3,.92,brick);box(x,.12,0,1.12,.24,1.1,'#86755e');
@@ -96,6 +98,11 @@ export function createLandmarks() {
     rail([x,1.75,z],[x,1.1,z-.75],.027,metal);rail([x,1.1,z-.75],[x,.43,z],.027,metal);
     const medallion=new THREE.CylinderGeometry(.17,.17,.025,16);medallion.rotateZ(Math.PI/2);add(medallion,metal,x,1.1,z,0,0,0,.2);
    }
+  }
+  if(landmark.buildingId) {
+   const draw={box,text,rail};
+   const facade=landmark.id==='iib-parnakuti'?drawIibFacade:landmark.id==='konale-neet'?drawKonaleFacade:drawRccFacade;
+   facade(landmark.facadeWidth!,landmark.height!,draw);
   }
   for(const [m,geometries] of batches){const merged=mergeGeometries(geometries,false);for(const geo of geometries)geo.dispose();if(!merged)continue;const mesh=new THREE.Mesh(merged,m);mesh.castShadow=true;mesh.receiveShadow=true;local.add(mesh);resources.push(merged);}
  }

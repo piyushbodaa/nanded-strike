@@ -47,6 +47,68 @@
         "Cream metal gate with rectilinear grid, diamonds and circular medallions"
       ],
       "estimated": "Gate width10.9m and height5.3m. Gates are shown open for passage, while the source photograph shows them closed. No building footprint was moved to accommodate the gate."
+    },
+    {
+      "id": "iib-parnakuti",
+      "name": "IIB Parnakuti",
+      "coordinate": {
+        "latitude": 19.1764011,
+        "longitude": 77.3101065
+      },
+      "footprint": "d1493e55-ec1f-465f-9739-298ebc393cd5",
+      "locationBasis": "Official IIB directions link cid13803609631637388345 resolves to Parnakuti at this place pin. The mapped footprint contains the pin. Its north-east short edge is used as the visible facade; exact architectural frontage orientation is approximate because Street View is obscured by vegetation.",
+      "officialLocation": "https://www.iibedu.com/iib-neetcoaching/contact-us/",
+      "photoPage": "https://www.iibedu.com/iib-neetcoaching/nanded-branch/",
+      "photo": "https://www.iibedu.com/iib-neetcoaching/wp-content/uploads/2026/08/IIB-Parnakuti-1-340x480-optimized.png",
+      "observed": [
+        "White piers and three blue barred-window ribbons",
+        "Dark horizontal roof louvers and large red IIB lettering",
+        "Blue/red THINK NEET | THINK IIB lettering",
+        "Grey twin-entrance canopy, Parnakuti lettering, steps and wall-mounted AC"
+      ],
+      "estimated": "Facade width17.4m fits the original short footprint edge;14.4m height and relief depths are estimated. Exact facade orientation is not surveyed. The full mapped footprint remains intact."
+    },
+    {
+      "id": "rcc-frontage",
+      "name": "RCC Coaching",
+      "coordinate": {
+        "latitude": 19.172765,
+        "longitude": 77.309361
+      },
+      "footprint": "bf1d2f50-b89c-478e-bc5a-a7b5b98b2bd6",
+      "locationBasis": "Official Nanded centre embed is centred near this road frontage. June2025 Street View from19.1727869,77.309251 looking east confirms the identifiable tall RCC facade here. Current Google place pin19.1728752,77.3102965 is about100m inside the block and was not used as the facade centre. Footprint assignment is inferred from the road frontage, not surveyed.",
+      "officialLocation": "https://rccpattern.com/contact-us/",
+      "photoPage": "https://rccpattern.com/our-centres/",
+      "photo": "https://www.google.com/maps/@?api=1&map_action=pano&pano=e7Io_hivmdWhER5T8frP7w&heading=84.84018&pitch=10&fov=75",
+      "observed": [
+        "Tall cream horizontally grooved frontage",
+        "Two narrow dark louver shafts",
+        "Three blue-grey right-hand windows with thick projecting frames",
+        "Top recessed grille and parapet",
+        "Black name fascia with red RCC lettering and dark entrance steps"
+      ],
+      "estimated": "West facade width11.2m matches the original footprint edge. Height18m is estimated from visible storeys. The lower RCC wing to the south is not custom modelled. No invented student names, portraits or examination scores are shown."
+    },
+    {
+      "id": "konale-neet",
+      "name": "Konale NEET Center",
+      "coordinate": {
+        "latitude": 19.1730883,
+        "longitude": 77.309267
+      },
+      "footprint": "46af74ee-906f-44ae-93b8-2dac0091ec5b",
+      "locationBasis": "Official contact page provides Shyam Nagar address and short Plus Code58F5+6PJ, with an embedded map at this coordinate. The adjoining east-side footprint and west-facing frontage are inferred from that entrance point and the photograph.",
+      "officialLocation": "https://konaleclasses.com/home/contact",
+      "photoPage": "https://konaleclasses.com/",
+      "photo": "https://konaleclasses.com/img/neet.jpg",
+      "observed": [
+        "Off-white three-storey frontage and individual dark upper windows",
+        "Brown-framed glazed projection over right entrance",
+        "Red KONALE NEET CENTER and FOUNDATION fascia",
+        "Long left-side banner and grey ground-floor louver band",
+        "Steps, railings and colourful examination information boards"
+      ],
+      "estimated": "Facade width30.3m fits the original west edge; height10.8m is estimated. Small poster content is generalized; student photographs and exam claims are not reproduced. RCC and Konale are separate institutes."
     }
   ],
   "verifiedButNotCustomModelled": [
@@ -71,5 +133,6 @@
       "primarySitePlan": "https://gpnanded.org.in/files/misc/MD_30AUG2024.pdf"
     }
   ],
-  "status": "Both models are integrated into the world renderer, with ground collision for piers, plinths and gate leaves. Overhead lintels do not create invisible ground barriers."
+  "status": "Five photo-referenced landmarks are integrated. Their original map footprints are retained; facade relief and estimated building heights are included in collision. Kaman and college gate passages remain walkable. Each landmark has an accessible starting viewpoint. Facades are exterior reconstructions, not enterable interiors.",
+  "streetDetail": "Water tanks, rooftop bases, rolling shutters, shade canopies and exterior AC units are stylized everyday details on existing footprints. Their individual positions are not survey observations. No roads or footprint outlines were moved."
 }

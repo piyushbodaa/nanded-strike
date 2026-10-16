@@ -1,6 +1,7 @@
+import { LANDMARKS } from './landmark-data';
 /** Verified public-road starting sectors. Locality labels are not surveyed boundaries.
  * x=east, -z=north; projected at 19.1743N, 77.3111E. Source: /map-reference.json. */
-export type MapLocation = {id:string;name:string;label:string;x:number;z:number;yaw:number;description:string;latitude:number;longitude:number;sourceOffsetMetres:number};
+export type MapLocation = {id:string;name:string;label:string;x:number;z:number;yaw:number;pitch?:number;description:string;latitude:number;longitude:number;sourceOffsetMetres:number};
 export const DEFAULT_LOCATION_ID = 'bhagya';
 export const LOCATIONS: MapLocation[] = [
   {
@@ -88,4 +89,9 @@ export const LOCATIONS: MapLocation[] = [
     "sourceOffsetMetres": 4.1
   }
 ];
+// Photo-referenced institutions get public-road viewpoints, never spawns inside a building.
+for(const landmark of LANDMARKS.filter(l=>l.buildingId))LOCATIONS.push({
+ id:landmark.locationId,name:landmark.name,label:landmark.name,
+ ...landmark.viewpoint,pitch:Math.atan2((landmark.height??10)*.46-1.58,Math.hypot(landmark.viewpoint.x-landmark.x,landmark.viewpoint.z-landmark.z)),description:landmark.description,latitude:landmark.latitude,longitude:landmark.longitude,sourceOffsetMetres:Math.round(Math.hypot(landmark.viewpoint.x-(landmark.longitude-77.3111)*111320*Math.cos(19.1743*Math.PI/180),landmark.viewpoint.z+(landmark.latitude-19.1743)*111320)*10)/10,
+});
 export const LOCATION = {name:'Nanded neighbourhoods',city:'Nanded',latitude:19.1743,longitude:77.3111,source:'/map-reference.json'};

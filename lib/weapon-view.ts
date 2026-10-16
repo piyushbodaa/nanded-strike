@@ -10,8 +10,8 @@ const ease=(x:number)=>{const t=THREE.MathUtils.clamp(x,0,1);return t*t*(3-2*t);
 
 /** Original articulated view model. Reload, slide, magazine and support hand animate separately. */
 export function createWeaponView(camera:THREE.Camera) {
-  const group=new THREE.Group(),rifle=new THREE.Group(),pistol=new THREE.Group();
-  group.name='First-person weapon';group.add(rifle,pistol);camera.add(group);
+  const group=new THREE.Group(),rifle=new THREE.Group(),pistol=new THREE.Group(),knife=new THREE.Group();
+  group.name='First-person weapon';rifle.name='AR30 rifle';pistol.name='P12 handgun';knife.name='Combat knife';group.add(rifle,pistol,knife);camera.add(group);
   const materials:THREE.Material[]=[],geometries:THREE.BufferGeometry[]=[];
   const material=(color:string,roughness=.65,metalness=.12)=>{const m=new THREE.MeshStandardMaterial({color,roughness,metalness});materials.push(m);return m;};
   const receiver=material('#3c444a',.43,.42),steel=material('#222a30',.38,.5),polymer=material('#263139',.8,.05),rubber=material('#151e23',.95,0),sleeve=material('#425568',.9,0),glove=material('#666c58',.95,0),skin=material('#b79578',.85,0),marking=material('#9babb0',.55,.2);
@@ -42,6 +42,13 @@ export function createWeaponView(camera:THREE.Camera) {
   box(slide,.017,.023,.023,0,.095,-.275,steel);box(slide,.058,.024,.022,0,.095,-.028,steel);
   const pistolMagazine=box(pistol,.074,.15,.076,0,-.17,-.025,steel);
   for(let n=0;n<6;n++)box(slide,.094,.065,.006,0,.035,-.06+n*.009,polymer,.001);
+  // A broad tapered steel blade, crossguard and wrapped grip distinguish slot 3.
+  const bladeMaterial=material('#c2ccd0',.27,.8);
+  const bladeShape=new THREE.Shape();bladeShape.moveTo(-.039,0);bladeShape.lineTo(.039,0);bladeShape.lineTo(.029,.26);bladeShape.lineTo(0,.42);bladeShape.lineTo(-.033,.29);bladeShape.closePath();
+  const blade=add(knife,new THREE.ExtrudeGeometry(bladeShape,{depth:.012,bevelEnabled:false}),bladeMaterial,0,.006,-.17);blade.rotation.x=-Math.PI/2;
+  tube(knife,.032,.20,0,0,-.03,rubber);box(knife,.16,.025,.035,0,0,-.154,steel);box(knife,.068,.035,.025,0,0,.079,steel);
+  for(let n=0;n<6;n++)tube(knife,.034,.007,0,0,-.11+n*.029,polymer);
+  knife.rotation.set(-.12,0,-.23);
   function arm(side:number) {
     const root=new THREE.Group();group.add(root);
     const upper=add(root,new THREE.CylinderGeometry(.058,.071,1,10),sleeve);
@@ -62,23 +69,25 @@ export function createWeaponView(camera:THREE.Camera) {
     group.visible=pose.alive;
     if(!pose.alive)return;
     if(current!==pose.weapon){current=pose.weapon;swap=0;}
-    swap=Math.min(1,swap+dt*5.5);rifle.visible=current==='rifle';pistol.visible=current==='pistol';
+    swap=Math.min(1,swap+dt*5.5);rifle.visible=current==='rifle';pistol.visible=current==='pistol';knife.visible=current==='knife';
     const shotAge=Math.max(0,pose.time-pose.shotAt)/1000;
-    const recoil=pose.shotAt>0?Math.exp(-shotAge*25)*Math.sin(Math.min(1,shotAge*35)*Math.PI*.65):0;
-    const reloading=pose.reloadUntil>pose.time;
+    const melee=current==='knife';
+    const slash=melee&&pose.shotAt>0&&shotAge<.38?Math.sin(shotAge/.38*Math.PI):0;
+    const recoil=!melee&&pose.shotAt>0?Math.exp(-shotAge*25)*Math.sin(Math.min(1,shotAge*35)*Math.PI*.65):0;
+    const reloading=!melee&&pose.reloadUntil>pose.time;
     const progress=reloading?THREE.MathUtils.clamp(1-(pose.reloadUntil-pose.time)/pose.reloadDuration,0,1):0;
     const reloadLift=reloading?ease(progress/.15)*(1-ease((progress-.83)/.17)):0;
     const magOut=reloading?ease((progress-.12)/.15)*(1-ease((progress-.55)/.18)):0;
     const boltPull=reloading?Math.sin(ease((progress-.76)/.14)*Math.PI)*.05:0;
     cycle+=dt*(pose.speed>0.1?Math.min(12,pose.speed*2.1):1.3);
     const moveWeight=THREE.MathUtils.clamp(pose.speed/5,0,1),bob=Math.sin(cycle)*.005*moveWeight;
-    group.position.set(current==='rifle'?.24:.20,-.245+Math.abs(Math.cos(cycle))*.005*moveWeight-.25*(1-ease(swap))-.065*reloadLift,-.72+recoil*.05);
-    group.rotation.set(recoil*.045+(pose.sprint?.22:0)-reloadLift*.12,.005+reloadLift*.22,-reloadLift*.33+bob);
+    group.position.set((current==='rifle'?.24:melee?.28:.20)-slash*.34,-.245+Math.abs(Math.cos(cycle))*.005*moveWeight-.25*(1-ease(swap))-.065*reloadLift+slash*.1,(melee?-.60:-.72)+recoil*.05-slash*.17);
+    group.rotation.set(recoil*.045+(pose.sprint?.22:0)-reloadLift*.12+slash*.15,.005+reloadLift*.22-slash*.45,-reloadLift*.33+bob+slash*.8);
     rifleMagazine.position.set(-magOut*.06,-.15-magOut*.31,-.18+magOut*.12);rifleMagazine.rotation.z=-magOut*.18;
     pistolMagazine.position.y=-.17-magOut*.25;bolt.position.z=-.08+boltPull;slide.position.z=recoil*.028;
-    left.pose(new THREE.Vector3(current==='rifle'?-.025:-.035,-.09-magOut*.29,current==='rifle'?-.46+magOut*.34:-.07));
-    right.pose(new THREE.Vector3(.012,-.13,current==='rifle'?.025:.015));
-    muzzle.position.z=current==='rifle'?-1.05:-.37;muzzle.visible=pose.shotAt>0&&shotAge<.042&&!reloading;muzzle.rotation.z=pose.shotAt%7;
+    left.pose(new THREE.Vector3(melee?-.47:current==='rifle'?-.025:-.035,(melee?-.17:-.09)-magOut*.29,current==='rifle'?-.46+magOut*.34:melee?.05:-.07));
+    right.pose(new THREE.Vector3(.012,melee?-.035:-.13,current==='rifle'?.025:.015));
+    muzzle.position.z=current==='rifle'?-1.05:-.37;muzzle.visible=!melee&&pose.shotAt>0&&shotAge<.042&&!reloading;muzzle.rotation.z=pose.shotAt%7;
     if(lastReload&&!reloading){rifleMagazine.rotation.z=0;pistolMagazine.position.y=-.17;}lastReload=reloading;
   }
   return {group,muzzle,update,dispose(){camera.remove(group);for(const geometry of geometries)geometry.dispose();for(const m of materials)m.dispose();}};

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addPlayer, advanceMatch, applyInput, createMatch, isWalkable, MATCH_DURATION, movePlayer, removePlayer, sanitizeInput, snapshot, RULESET_VERSION, type Input, type Match, type Player } from "../lib/simulation";
+import { addPlayer, advanceMatch, applyInput, createMatch, isWalkable, MATCH_DURATION, movePlayer, removePlayer, sanitizeInput, snapshot, RULESET_VERSION, WEAPONS, type Input, type Match, type Player } from "../lib/simulation";
 import { COLLIDERS, LOCATIONS, MAP_BOUNDS, SPAWNS, WAYPOINTS } from "../lib/map";
 import { touchesSolid, raySolid } from "../lib/geometry";
 const START=1_700_000_000_000;
@@ -115,7 +115,67 @@ test("reload waits for authoritative completion and conserves bullets",()=>{
 test("weapon swapping keeps separate magazines and cancels active reload",()=>{
   const {match,a}=duel();a.ammo=7;applyInput(match,a.id,input(0,{reload:true}),START);
   applyInput(match,a.id,input(1,{weapon:"pistol"}),START);assert.equal(a.ammo,12);assert.equal(a.reloadUntil,0);
-  applyInput(match,a.id,input(2,{weapon:"rifle"}),START);assert.equal(a.ammo,7);
+  a.ammo=4;applyInput(match,a.id,input(2,{weapon:"knife",reload:true}),START);
+  assert.equal(a.weapon,"knife");assert.equal(a.ammo,0);assert.equal(a.reserve,0);assert.equal(a.reloadUntil,0);
+  applyInput(match,a.id,input(3,{weapon:"pistol"}),START);assert.equal(a.ammo,4);assert.equal(a.reserve,60);
+  applyInput(match,a.id,input(4,{weapon:"rifle"}),START);assert.equal(a.ammo,7);assert.equal(a.reserve,120);
+});
+test("knife attacks damage only within melee reach, have no headshots and consume no ammunition",()=>{
+  const {match,a,b}=duel();b.z=a.z-1.8;a.invulnerableUntil=START+1000;
+  fire(match,a,START,0,{weapon:"knife"});
+  assert.equal(b.health,45);assert.equal(a.ammo,0);assert.equal(a.reserve,0);assert.equal(a.invulnerableUntil,0);
+  assert.equal(a.magazines.rifle.ammo,30);assert.equal(a.magazines.pistol.ammo,12);
+  assert.ok(match.events.some(e=>e.type==="melee"&&e.weapon==="knife"));
+  assert.ok(!match.events.some(e=>e.type==="shot"));
+  assert.ok(match.events.some(e=>e.type==="hit"&&!e.headshot));
+  applyInput(match,a.id,input(1),START);
+  b.z=a.z-3;fire(match,a,START+600,2,{weapon:"knife"});assert.equal(b.health,45,"knife must not hit a distant target");
+  applyInput(match,a.id,input(3),START+600);
+  b.z=a.z-1.8;fire(match,a,START+1200,4,{weapon:"knife",yaw:Math.PI});assert.equal(b.health,45,"melee must aim at its target");
+});
+test("knife recovery rejects rapid inputs and cannot be bypassed by switching guns",()=>{
+  const {match,a,b}=duel();b.z=a.z-1.8;
+  fire(match,a,START,0,{weapon:"knife"});applyInput(match,a.id,input(1),START);
+  fire(match,a,START+1,2,{weapon:"knife"});assert.equal(b.health,45);
+  applyInput(match,a.id,input(3),START+1);
+  fire(match,a,START+120,4,{weapon:"pistol"});assert.equal(a.ammo,12);assert.equal(b.health,45);
+  applyInput(match,a.id,input(5),START+120);
+  fire(match,a,START+WEAPONS.knife.interval+1,6,{weapon:"knife"});
+  assert.equal(b.health,0);assert.equal(a.kills,1);assert.equal(b.deaths,1);assert.equal(match.scores.blue,1);
+});
+test("held knife attacks repeat at the server rate and never request a reload",()=>{
+  const {match,a}=duel();fire(match,a,START,0,{weapon:"knife",reload:true});
+  advanceMatch(match,START+400);assert.equal(match.events.filter(e=>e.type==="melee").length,1);
+  advanceMatch(match,START+600);assert.equal(match.events.filter(e=>e.type==="melee").length,2);
+  assert.equal(a.ammo,0);assert.equal(a.reserve,0);assert.equal(a.reloadUntil,0);
+  assert.ok(!match.events.some(e=>e.type==="reload"));
+  advanceMatch(match,START+1200);assert.equal(match.events.filter(e=>e.type==="melee").length,2,"stale held input must stop attacking");
+});
+test("knife obeys friendly fire, spawn protection and blocked sightlines",()=>{
+  for(const shield of [false,true]){
+    const {match,a,b}=duel();b.z=a.z-1.8;
+    if(shield)b.invulnerableUntil=START+2000;else b.team=a.team;
+    fire(match,a,START,0,{weapon:"knife"});assert.equal(b.health,100);
+  }
+  // A real narrow gate pillar lets both players stand outside the obstruction,
+  // closer than knife range. The wall, rather than distance, must stop the hit.
+  const pier=COLLIDERS.find(c=>c.h>1.8&&c.w<1.2&&touchesSolid(c.x,c.z,c)&&isWalkable(c.x-c.w/2-.4,c.z)&&isWalkable(c.x+c.w/2+.4,c.z));
+  assert.ok(pier,"map needs an accessible narrow gate pillar");
+  const {match,a,b}=duel();Object.assign(a,{x:pier.x-pier.w/2-.4,z:pier.z});Object.assign(b,{x:pier.x+pier.w/2+.4,z:pier.z});
+  assert.ok(Math.hypot(a.x-b.x,a.z-b.z)<WEAPONS.knife.range);
+  fire(match,a,START,0,{weapon:"knife",yaw:-Math.PI/2});assert.equal(b.health,100);
+  assert.ok(!match.events.some(e=>e.type==="hit"));
+});
+test("knife inputs are sanitized and old two-weapon rooms receive the complete loadout",()=>{
+  assert.equal(sanitizeInput(input(0,{weapon:"knife"})).weapon,"knife");
+  assert.equal(sanitizeInput(input(0,{weapon:"rocket" as Input["weapon"]})).weapon,undefined);
+  const match=createMatch(START),player=addPlayer(match,"RETURNING");
+  const id=player.id;match.rulesVersion=3;delete (player.magazines as Partial<Player["magazines"]>).knife;
+  advanceMatch(match,START+1);
+  assert.equal(match.players[0].id,id);assert.equal(match.rulesVersion,RULESET_VERSION);
+  assert.deepEqual(player.magazines.knife,{ammo:0,reserve:0});
+  applyInput(match,id,input(0,{weapon:"knife"}),START+1);assert.equal(player.weapon,"knife");
+  assert.doesNotThrow(()=>JSON.stringify(snapshot(match)));
 });
 test("kills score once, victims respawn, and victory restarts the round",()=>{
   const {match,a,b}=duel();match.scores.blue=24;b.health=20;fire(match,a,START);
@@ -164,9 +224,9 @@ test("older human-only rooms migrate blocked spawn layouts without changing play
   assert.ok(match.players.every(player=>!player.bot));
 });
 
-test("all seven sectors separate real teams behind buildings with clear street exits",async t=>{
-  assert.equal(LOCATIONS.length,7);
-  assert.equal(new Set(LOCATIONS.map(location=>location.id)).size,7);
+test("all sectors separate real teams behind buildings with clear street exits",async t=>{
+  assert.ok(LOCATIONS.length>=7);
+  assert.equal(new Set(LOCATIONS.map(location=>location.id)).size,LOCATIONS.length);
   for(const location of LOCATIONS)await t.test(location.name,()=>{
     const match=createMatch(START,{locationId:location.id,start:location});
     assert.equal(match.locationId,location.id);assert.equal(match.players.length,0);
