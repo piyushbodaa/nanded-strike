@@ -18,8 +18,8 @@
   },
   "coverage": "Approximately 1.96 km east–west by 1.45 km north–south. Locality names identify starting sectors, not surveyed administrative boundaries.",
   "actualGeometry": "425 clipped OSM street paths; 5,887 Overture building footprints; 13 mapped campus, park or ground surfaces. One game unit represents one metre. Street bends, intersections, building positions and footprints retain their geographic coordinates.",
-  "illustrativeElements": "Building heights (no measured heights supplied), facade colours, windows, doors, roof parapets, road widths, surface materials, road markings, signs and lighting are approximate visual treatments. No claim of a photographic or surveyed architectural reconstruction. Roof footprint positions are source-based, but imagery-derived outlines can be missing, displaced or outdated.",
-  "navigation": "4,550 clearance-tested waypoints in the largest connected road component. Start points are on walkable mapped roads, within 0–14 metres of their documented geographic anchors. Small disconnected road components remain visible but do not carry AI navigation.",
+  "illustrativeElements": "Building heights (no measured heights supplied), facade colours, windows, doors, roof parapets, road widths, surface materials, road markings, wayfinding signs and lighting are approximate visual treatments. Two landmarks have custom photo-referenced meshes: Bhagya Nagar Kaman and Yeshwant College entrance. Their dimensions, sculptural details and exact frontage offsets are estimated; see /landmark-reference.json. Other named campuses remain source-footprint massing with illustrative facades. No claim of photographic or surveyed architectural reconstruction.",
+  "navigation": "4,550 base road waypoints are retained after clearance checks against eleven new landmark ground colliders. Bhagya Nagar Explore begins about14m south of Kaman, facing the structure; Baba Nagar faces the college gate. Multiplayer team starts use separately validated road clusters.",
   "excludedSolid": {
     "id": "ad3d1cff-5412-4bec-8368-268cc5068f05",
     "osmId": "way/1162009048",
@@ -139,5 +139,10 @@
   ],
   "roadNames": "SRINAGAR is displayed as Shri Nagar Road. Bhagya Nagar Road and Yashwant College Road labels are corroborated by public address evidence; their OSM ways are unnamed. Other unnamed streets remain unnamed.",
   "textureAttribution": "/textures/sources.json",
-  "reproduce": "uv run --with shapely python scripts/build-geodata.py reads the bundled public/map-source.osm and public/map-source.json, then projects actual geometry, estimates heights/widths, and builds clearance-tested navigation. No procedural replacement buildings."
+  "reproduce": "uv run --with shapely python scripts/build-geodata.py reads the bundled public/map-source.osm and public/map-source.json, then projects actual geometry, estimates heights/widths, and builds clearance-tested navigation. No procedural replacement buildings.",
+  "landmarkReference": "/landmark-reference.json",
+  "customLandmarkModels": [
+    "Bhagya Nagar Kaman",
+    "Yeshwant College entrance"
+  ]
 }

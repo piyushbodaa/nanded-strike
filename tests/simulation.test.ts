@@ -146,6 +146,24 @@ test("legacy bots are removed before ticking or snapshots and never refill",()=>
   assert.equal(match.players.length,0);
 });
 
+test("older human-only rooms migrate blocked spawn layouts without changing player identities",()=>{
+  const match=createMatch(START),blue=addPlayer(match,"BLUE","blue"),orange=addPlayer(match,"ORANGE","orange");
+  const identities=match.players.map(player=>({id:player.id,name:player.name,team:player.team}));
+  match.rulesVersion=RULESET_VERSION-1;
+  match.spawns={blue:[{x:WALL.x,z:WALL.z}],orange:[{x:WALL.x,z:WALL.z}]};
+  for(const player of [blue,orange])Object.assign(player,{x:WALL.x,z:WALL.z,health:10,kills:3,deaths:2});
+  advanceMatch(match,START+100);
+  assert.equal(match.rulesVersion,RULESET_VERSION);
+  assert.deepEqual(match.players.map(player=>({id:player.id,name:player.name,team:player.team})),identities);
+  for(const player of match.players){
+    assert.ok(isWalkable(player.x,player.z),"upgrading a room must move humans out of newly solid geometry");
+    assert.ok(match.spawns![player.team].some(point=>point.x===player.x&&point.z===player.z));
+    assert.equal(player.health,100);assert.equal(player.kills,0);assert.equal(player.deaths,0);
+  }
+  assert.ok(match.spawns!.blue.length>=4&&match.spawns!.orange.length>=4);
+  assert.ok(match.players.every(player=>!player.bot));
+});
+
 test("all seven sectors separate real teams behind buildings with clear street exits",async t=>{
   assert.equal(LOCATIONS.length,7);
   assert.equal(new Set(LOCATIONS.map(location=>location.id)).size,7);

@@ -45,6 +45,6 @@ Do not add bots or fake player counts. Keep room state durable across Vercel Fun
 
 ## Review and deployment
 
-GitHub Actions runs lint, TypeScript, tests, and a production build on pull requests. Vercel builds the connected repository and supplies preview deployments for review. External fork previews may require a maintainer's approval in Vercel. Do not provide contributors with production database or deployment credentials. Changes merged to `main` deploy to production.
+The protected `main` branch requires a pull request and passing **Quality checks**; force pushes and branch deletion are disabled. GitHub Actions runs lint, TypeScript, tests, and a production build on pull requests. Vercel builds the connected repository and supplies preview deployments for review. External fork previews may require a maintainer's approval in Vercel. Preview deployments use an isolated test database with a restricted runtime role; they do not join production matches. Do not provide contributors with production database or deployment credentials. Changes merged to `main` deploy to production.
 
 Original game source is MIT-licensed. Map datasets, fonts, models, textures, and vendored code retain their own licenses and attribution requirements; see the README and the license files beside those assets. No Valve or Counter-Strike game assets are included.

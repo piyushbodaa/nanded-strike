@@ -7,13 +7,13 @@ export const LOCATIONS: MapLocation[] = [
     "id": "bhagya",
     "name": "Bhagya Nagar",
     "label": "भाग्यनगर",
-    "x": -180.24,
-    "z": -323.62,
-    "yaw": -2.16,
-    "description": "At the mapped Bhagya Nagar Road junction; nearby OSM addresses identify Bhagya Nagar Kaman.",
+    "x": -187.8,
+    "z": -311.5,
+    "yaw": -0.241,
+    "description": "View Bhagya Nagar Kaman from the public road south of its entrance; the gate is reconstructed from an inspected photograph.",
     "latitude": 19.1772071,
     "longitude": 77.3093858,
-    "sourceOffsetMetres": 0.0
+    "sourceOffsetMetres": 14.3
   },
   {
     "id": "workshop",
@@ -69,8 +69,8 @@ export const LOCATIONS: MapLocation[] = [
     "label": "बाबानगर",
     "x": -149.32,
     "z": 495.35,
-    "yaw": -0.12,
-    "description": "Public frontage by Yeshwant College and Government Polytechnic; official addresses place these in Baba Nagar.",
+    "yaw": 1.913,
+    "description": "Face the photo-referenced Yeshwant College entrance from its public-road approach in Baba Nagar.",
     "latitude": 19.1699,
     "longitude": 77.3098,
     "sourceOffsetMetres": 13.8

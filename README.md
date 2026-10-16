@@ -8,6 +8,8 @@ An original multiplayer browser FPS set in **Bhagya Nagar and nearby Nanded neig
 
 The approximately 1.96 × 1.45 km map preserves mapped street geometry and 5,887 building footprints. Choose a starting area: Bhagya Nagar, Workshop Corner, Shri Nagar, Anand Nagar, Yashwant College Road, Baba Nagar, or ITI Shri Nagar. Locality labels identify starting sectors, not surveyed neighbourhood boundaries. Building heights, façades, road widths, signs, and other visual details are estimated; this is not a photographic reconstruction. Detailed provenance and limitations are in [public/map-reference.json](public/map-reference.json).
 
+Bhagya Nagar Kaman and the Yeshwant College entrance have custom models based on inspected photographs. Select **Bhagya Nagar** or **Baba Nagar** and choose **Explore map** to face them. Their dimensions and small details are approximate. Workshop Corner’s water tank, Government ITI’s frontage, and Government Polytechnic still need verified custom models; see [landmark references and remaining gaps](public/landmark-reference.json).
+
 The game uses Next.js, React, Three.js, and a shared TypeScript simulation. Online simulation and room presence use durable Neon Postgres storage across Vercel Function instances. Peaceful exploration runs locally in the browser. No account is required.
 
 ## Run locally
@@ -66,11 +68,11 @@ With a local or deployed server running:
 npm run test:browser
 ```
 
-The browser script defaults to `http://127.0.0.1:5173` and `/usr/bin/chromium`. Override `TEST_URL` (or `BASE_URL`) and `CHROMIUM_PATH` when needed. Use `HEADED=1` to watch. Screenshots are written to `test-results/browser/`.
+The browser script defaults to `http://127.0.0.1:5173` and `/usr/bin/chromium`. Override `TEST_URL` (or `BASE_URL`) and `CHROMIUM_PATH` when needed. Use `HEADED=1` to watch. Screenshots are written to `test-results/multiplayer/`.
 
 Browser coverage joins the public match from separate desktop and touch-phone contexts, verifies the same room and human-only player list, separated spawns, authoritative movement in both directions, firing, reload, scoreboard, real simultaneous touch movement/aim/fire, release handling, and reconnect feedback. It also creates a private room at a selected area, joins through an invite in another browser, checks invite copying, and exercises peaceful portrait exploration. Sharp phone canvas resolution and touch-target bounds are checked. Use `HEADED=1` on a desktop with a display for faster native-browser testing; software-rendered headless Chromium can be much slower and is not evidence of real-phone frame rate.
 
-Simulation tests cover movement, polygon collision, mapped navigation, spawns, damage, respawns, rounds, and bots. Storage and API tests exercise durable persistence, competing room updates, public joining, human-only rooms, and spawn separation.
+Simulation tests cover movement, polygon collision, mapped navigation, spawns, damage, respawns, rounds, and removal of legacy bots. Storage and API tests exercise durable persistence, competing room updates, public joining, human-only rooms, and spawn separation.
 
 ## Multiplayer architecture
 
@@ -88,7 +90,7 @@ The schema operation is idempotent. The HTTP snapshot transport has a requested 
 
 ## Contribute
 
-The original application code is available under the [MIT License](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, changes, and pull requests. Pull requests run lint, type checking, tests, and a production build in GitHub Actions. Map datasets, character models, textures, and fonts retain their own licenses listed below.
+The original application code is available under the [MIT License](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, changes, and pull requests. The protected `main` branch requires a pull request and passing lint, type checking, tests, and a production build in GitHub Actions. Vercel provides PR previews using an isolated test database; merged changes deploy to the live game. External fork previews may need maintainer approval in Vercel. Map datasets, character models, textures, and fonts retain their own licenses listed below.
 
 ## Sources and licenses
 
