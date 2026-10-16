@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { trackGame } from '../lib/analytics';
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { ArrowRight, ArrowUpRight, Bomb, Bot, Check, ChevronDown, Copy, Crosshair, Eye, Footprints, Gamepad2, HelpCircle, MapPin, Maximize2, Pause, Play, RotateCcw, Search, Settings2, Shield, ShoppingBag, Smartphone, Users, Volume2, X } from 'lucide-react';
 import type { GameClient, HUD, Settings } from '../lib/client';
@@ -189,16 +190,16 @@ export default function Home() {
     if(joystickThumb.current)joystickThumb.current.style.transform=`translate(${x}px,${z}px)`;
     if(engine.current){engine.current.touchMove=distance<radius*.12?{forward:0,strafe:0}:{forward:-z/radius,strafe:x/radius};engine.current.touchSprint=distance/radius>.9;}
   };
-  const startBots=()=>{resetTouchControls();setError('');setModal(null);engine.current?.startBots(name.trim()||'Operator',locationId,gameMode,botTeam);};
-  const startSolo=()=>{resetJoystick();setError('');setModal(null);engine.current?.startSolo(name.trim()||'Operator',locationId,true);};
+  const startBots=()=>{resetTouchControls();setError('');setModal(null);if(engine.current){engine.current.startBots(name.trim()||'Operator',locationId,gameMode,botTeam);trackGame('game_start',botTeam==='spectator'?'watch_bots':'bots');}};
+  const startSolo=()=>{resetJoystick();setError('');setModal(null);if(engine.current){engine.current.startSolo(name.trim()||'Operator',locationId,true);trackGame('game_start','explore');}};
   const visitPlace=()=>{
     if(!selectedPlace||hud.mode==='online'||!ready)return;
     resetTouchControls();setError('');setModal(null);
-    engine.current?.visitPlace(selectedPlace.id,name.trim()||'Operator');
+    if(engine.current){engine.current.visitPlace(selectedPlace.id,name.trim()||'Operator');trackGame('game_start','explore');}
   };
   const online=async(action:'create'|'join'|'quickjoin')=>{
     if(!engine.current||busy)return;setBusy(true);setError('');
-    try{await engine.current.startOnline(action,name.trim()||'Operator',action==='join'?room:undefined,locationId,gameMode);setModal(null);}
+    try{await engine.current.startOnline(action,name.trim()||'Operator',action==='join'?room:undefined,locationId,gameMode);trackGame('game_start','online');setModal(null);}
     catch(cause){setError(cause instanceof Error?cause.message:'Could not connect. Please try again.');}
     finally{setBusy(false);}
   };
@@ -210,7 +211,7 @@ export default function Home() {
   };
   const open=(which:Modal)=>{resetTouchControls();if(hud.mode!=='lobby')engine.current?.pause();setError('');setModal(which);};
   const close=()=>{if(busy||displayBusy)return;setModal(null);setError('');};
-  const leave=()=>{resetJoystick();engine.current?.leave();setModal(null);};
+  const leave=()=>{resetJoystick();if(hud.mode!=='lobby')trackGame('game_end');engine.current?.leave();setModal(null);};
   const pause=()=>{resetJoystick();engine.current?.pause();};
   const chooseDisplay=async(mode:DisplayMode)=>{
     if(screenChanging.current)return;
