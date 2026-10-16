@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import type { Weapon } from './simulation';
 
 /** CC0 Quaternius SWAT. Provenance accompanies /assets/characters/swat.glb. */
 export const ACTOR_ASSET_URL = '/assets/characters/swat.glb';
@@ -19,7 +20,8 @@ export interface ActorPose {
   shooting: boolean;
   dead: boolean;
   reloading?: boolean;
-  weapon?: 'rifle' | 'pistol';
+  weapon?: Weapon;
+  attackAge?: number;
 }
 
 type Motion = 'idle' | 'walk' | 'run' | 'aim' | 'fire' | 'reload' | 'death';
@@ -28,12 +30,12 @@ export interface Actor {
   group: THREE.Group;
   muzzle: THREE.Object3D;
   /** Useful for verification and optional UI; no physics depends on it. */
-  animationState: 'idle' | 'walk' | 'run' | 'fire' | 'reload' | 'death';
+  animationState: 'idle' | 'walk' | 'run' | 'fire' | 'melee' | 'reload' | 'death';
   mixer: THREE.AnimationMixer;
   model: THREE.Object3D;
   actions: Record<Motion, THREE.AnimationAction>;
   weaponMount: THREE.Group;
-  weapons: Record<'rifle' | 'pistol', THREE.Group>;
+  weapons: Record<Weapon, THREE.Group>;
   flash: THREE.Mesh;
   chest: THREE.Object3D;
   head: THREE.Object3D;
@@ -119,8 +121,9 @@ function meshBox(group: THREE.Group, size: [number, number, number], position: [
 }
 
 /** Original lightweight geometry; +Z is barrel direction and origin is grip. */
-function makeWeapon(kind: 'rifle' | 'pistol', dark: THREE.Material, metal: THREE.Material): THREE.Group {
+function makeWeapon(kind: Weapon, dark: THREE.Material, metal: THREE.Material): THREE.Group {
   const group = new THREE.Group();
+  group.name = kind;
   if (kind === 'rifle') {
     meshBox(group, [0.07, 0.09, 0.30], [0, 0.09, 0.12], dark);
     meshBox(group, [0.06, 0.06, 0.24], [0, 0.10, 0.38], dark);
@@ -130,10 +133,17 @@ function makeWeapon(kind: 'rifle' | 'pistol', dark: THREE.Material, metal: THREE
     meshBox(group, [0.046, 0.11, 0.055], [0, -0.025, -0.005], dark).rotation.x = 0.18;
     meshBox(group, [0.025, 0.03, 0.07], [0, 0.15, 0.08], metal);
     meshBox(group, [0.012, 0.05, 0.025], [0, 0.135, 0.49], metal);
-  } else {
+  } else if (kind === 'pistol') {
     meshBox(group, [0.055, 0.07, 0.23], [0, 0.075, 0.07], metal);
     meshBox(group, [0.05, 0.11, 0.065], [0, -0.008, -0.01], dark).rotation.x = 0.16;
     meshBox(group, [0.015, 0.018, 0.025], [0, 0.117, 0.14], dark);
+  } else {
+    meshBox(group, [0.05, 0.05, 0.17], [0, 0.01, 0.015], dark);
+    meshBox(group, [0.13, 0.024, 0.025], [0, 0.01, 0.105], metal);
+    const shape = new THREE.Shape();
+    shape.moveTo(-0.035, 0);shape.lineTo(0.035, 0);shape.lineTo(0.026, 0.25);shape.lineTo(0, 0.37);shape.lineTo(-0.03, 0.25);shape.closePath();
+    const blade = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelEnabled: false }), metal);
+    blade.rotation.x = Math.PI / 2;blade.position.set(0, 0.018, 0.115);blade.castShadow = true;group.add(blade);
   }
   return group;
 }
@@ -218,9 +228,11 @@ export function createActor(team: 'blue' | 'orange'): Actor {
   const dark = new THREE.MeshStandardMaterial({ color: '#20272a', roughness: 0.77, metalness: 0.18 });
   const metal = new THREE.MeshStandardMaterial({ color: '#444d51', roughness: 0.48, metalness: 0.7 });
   materials.push(dark, metal);
-  const weapons = { rifle: makeWeapon('rifle', dark, metal), pistol: makeWeapon('pistol', dark, metal) };
-  weaponMount.add(weapons.rifle, weapons.pistol);
-  weapons.pistol.visible = false;
+  const bladeMetal = new THREE.MeshStandardMaterial({ color: '#c2ccd0', roughness: 0.27, metalness: 0.8 });
+  materials.push(bladeMetal);
+  const weapons = { rifle: makeWeapon('rifle', dark, metal), pistol: makeWeapon('pistol', dark, metal), knife: makeWeapon('knife', dark, bladeMetal) };
+  weaponMount.add(weapons.rifle, weapons.pistol, weapons.knife);
+  weapons.pistol.visible = weapons.knife.visible = false;
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.1, 0.68);
   weaponMount.add(muzzle);
@@ -282,12 +294,13 @@ export function updateActor(actor: Actor, pose: ActorPose, deltaSeconds: number)
   const speed = Math.max(0, pose.speed);
   const walking = THREE.MathUtils.clamp(speed / 0.7, 0, 1);
   const running = THREE.MathUtils.smoothstep(speed, 1.8, 3.4);
+  const melee = pose.weapon === 'knife';
   const weights: Record<Exclude<Motion, 'death'>, number> = {
     idle: 1 - walking,
     walk: walking * (1 - running),
     run: walking * running,
-    aim: pose.reloading || pose.shooting ? 0 : 1,
-    fire: pose.shooting && !pose.reloading ? 1 : 0,
+    aim: pose.reloading || (pose.shooting && !melee) ? 0 : 1,
+    fire: pose.shooting && !pose.reloading && !melee ? 1 : 0,
     reload: pose.reloading ? 1 : 0,
   };
   const blend = 1 - Math.exp(-dt * 13);
@@ -320,13 +333,24 @@ export function updateActor(actor: Actor, pose: ActorPose, deltaSeconds: number)
     armQuaternions[0].multiply(pitchRotation.setFromAxisAngle(UP, Math.PI));
     leftWrist.parent!.getWorldQuaternion(armQuaternions[1]).invert();
     leftWrist.quaternion.copy(armQuaternions[1].multiply(armQuaternions[0]));
+  } else if (melee) {
+    const attackAge = pose.attackAge ?? 1000;
+    const slash = attackAge >= 0 && attackAge < 380 ? Math.sin(attackAge / 380 * Math.PI) : 0;
+    actor.model.updateWorldMatrix(true, true);
+    actor.chest.localToWorld(gripTarget.set(-0.21 + slash * 0.32, -0.07 + slash * 0.13, 0.23 + slash * 0.18));
+    elbowPole.set(-1, -0.8, 0).transformDirection(actor.model.matrixWorld);
+    placeArm(actor.arms.right, gripTarget, elbowPole);
+    actor.chest.localToWorld(gripTarget.set(0.22, -0.19, 0.05));
+    elbowPole.set(1, -0.8, 0).transformDirection(actor.model.matrixWorld);
+    placeArm(actor.arms.left, gripTarget, elbowPole);
   }
   actor.weapons.rifle.visible = weapon === 'rifle';
   actor.weapons.pistol.visible = weapon === 'pistol';
+  actor.weapons.knife.visible = melee;
   actor.muzzle.position.set(0, weapon === 'rifle' ? 0.1 : 0.075, weapon === 'rifle' ? 0.68 : 0.19);
-  actor.flash.visible = pose.shooting && !pose.reloading && Math.sin(actor.age * 65) > 0;
+  actor.flash.visible = !melee && pose.shooting && !pose.reloading && Math.sin(actor.age * 65) > 0;
   actor.flash.scale.setScalar(0.8 + 0.3 * Math.sin(actor.age * 109));
-  actor.animationState = pose.reloading ? 'reload' : pose.shooting ? 'fire' : running > 0.5 ? 'run' : walking > 0.2 ? 'walk' : 'idle';
+  actor.animationState = pose.reloading ? 'reload' : pose.shooting ? melee ? 'melee' : 'fire' : running > 0.5 ? 'run' : walking > 0.2 ? 'walk' : 'idle';
 }
 
 /** Releases actor-local resources; shared template geometry remains cached. */

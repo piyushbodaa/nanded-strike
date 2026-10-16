@@ -53,7 +53,7 @@ test('simultaneous public joins converge on one durable room with eight real hum
   } finally { f.cleanup(); }
 });
 
-test('private rooms preserve all seven locations and share authoritative human movement',async()=>{
+test('private rooms preserve every location and share authoritative human movement',async()=>{
   const f=fixture();
   try {
     for(const location of LOCATIONS){
@@ -77,6 +77,28 @@ test('private rooms preserve all seven locations and share authoritative human m
     await f.request({action:'join',room:'ZZZZZZ',name:'UNKNOWN'},404);
     await f.request({action:'input',room:PUBLIC_ROOM,token:'bad',input:idle(0)},401);
   } finally { f.cleanup(); }
+});
+
+test('three-slot loadout and melee events persist across independent API instances',async()=>{
+  const f=fixture();
+  try{
+    const host=await f.request({action:'create',name:'HOST'},201);
+    const guest=await f.request({action:'join',room:host.room,name:'GUEST'},200,1);
+    await f.request({action:'input',room:host.room,token:host.token,input:{...idle(0),weapon:'pistol',shoot:true}});
+    const handgun=await f.request({action:'input',room:host.room,token:guest.token,input:idle(0)},200,1);
+    assert.equal(handgun.state.players.find(p=>p.id===host.playerId)!.weapon,'pistol');
+    assert.equal(handgun.state.players.find(p=>p.id===host.playerId)!.ammo,11);
+    await f.request({action:'input',room:host.room,token:host.token,input:{...idle(1),weapon:'knife'}});
+    f.advance(600);
+    await f.request({action:'input',room:host.room,token:host.token,input:{...idle(2),weapon:'knife',shoot:true,reload:true}},200,1);
+    const knife=await f.request({action:'input',room:host.room,token:guest.token,input:idle(1)});
+    const seen=knife.state.players.find(p=>p.id===host.playerId)!;
+    assert.equal(seen.weapon,'knife');assert.equal(seen.ammo,0);assert.equal(seen.reloadUntil,0);
+    assert.ok(knife.state.events.some(e=>e.type==='melee'&&e.playerId===host.playerId));
+    const back=await f.request({action:'input',room:host.room,token:host.token,input:{...idle(3),weapon:'pistol'}},200,1);
+    assert.equal(back.state.players.find(p=>p.id===host.playerId)!.ammo,11);
+    assert.equal(back.state.players.length,2);assert.ok(back.state.players.every(p=>!p.bot));
+  }finally{f.cleanup();}
 });
 
 test('persisted bot and orphan states are removed and old spawns migrate on the next request',async()=>{

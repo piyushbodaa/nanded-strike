@@ -4,7 +4,7 @@
 import data from './geodata.json';
 import { DEFAULT_LOCATION_ID } from './locations';
 import SPAWN_LAYOUTS from './spawn-layouts.json';
-import { LANDMARK_COLLIDERS } from './landmark-data';
+import { LANDMARKS, LANDMARK_COLLIDERS } from './landmark-data';
 import { touchesSolid } from './geometry';
 export { LOCATIONS, DEFAULT_LOCATION_ID, LOCATION } from './locations';
 export type MapPoint = { x:number; z:number };
@@ -14,7 +14,8 @@ export type Building = Collider & {id:string;polygon:MapPoint[];name:string;colo
 export const MAP_BOUNDS=data.bounds;
 export const ROADS:Road[]=data.roads;
 const palette=['#e3dfd3','#d0d8d3','#d9d2c7','#cbd4dc','#ddd9c5','#d0c5ba'];
-export const BUILDINGS:Building[]=data.buildings.map((b,i)=>({id:b.id,x:b.x,z:b.z,w:b.w,d:b.d,h:b.h,polygon:b.points.map(([x,z])=>({x,z})),name:b.name??'',color:palette[i%palette.length],accent:'#627f85',kind:'home',front:1,label:b.name??''}));
+const landmarkBuildings=new Map(LANDMARKS.filter(l=>l.buildingId).map(l=>[l.buildingId,l]));
+export const BUILDINGS:Building[]=data.buildings.map((b,i)=>({id:b.id,x:b.x,z:b.z,w:b.w,d:b.d,h:landmarkBuildings.get(b.id)?.height??b.h,polygon:b.points.map(([x,z])=>({x,z})),name:b.name??'',color:landmarkBuildings.get(b.id)?.wallColor??palette[i%palette.length],accent:'#627f85',kind:'home',front:1,label:b.name??''}));
 export const SURFACES:{id:string;name:string;kind:string;points:MapPoint[]}[]=data.surfaces;
 export const COMPOUND_WALLS:Collider[]=[];
 export const COVER:(Collider&{kind:'crate'|'barrels'|'cart'|'planter'|'car'|'barrier'})[]=[];

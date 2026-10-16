@@ -5,7 +5,7 @@ import { SpatialGrid } from "./spatial";
 import { raySolid, touchesSolid } from "./geometry";
 
 export type Team = "blue" | "orange";
-export type Weapon = "rifle" | "pistol";
+export type Weapon = "rifle" | "pistol" | "knife";
 export interface Input {
   forward: number; strafe: number; yaw: number; pitch: number;
   shoot: boolean; reload: boolean; sprint: boolean; jump: boolean;
@@ -17,15 +17,15 @@ export interface Player {
   x: number; y: number; z: number; yaw: number; pitch: number;
   health: number; ammo: number; reserve: number; weapon: Weapon;
   kills: number; deaths: number; respawnAt: number; reloadUntil: number;
-  invulnerableUntil: number; lastShotAt: number; lastInputAt: number;
+  invulnerableUntil: number; lastShotAt: number; lastAttackWeapon?: Weapon; lastInputAt: number;
   lastSeq: number; vy: number; intent: Input; magazines: Record<Weapon, { ammo: number; reserve: number }>;
   botTarget: number; botDecisionAt: number; nextBotShotAt: number;
 }
 /** Shot events contain muzzle position and endX/endY/endZ; hit/kill identify the victim. */
 export interface GameEvent {
-  id: number; type: "shot" | "kill" | "hit" | "reload" | "respawn" | "round";
+  id: number; type: "shot" | "melee" | "kill" | "hit" | "reload" | "respawn" | "round";
   playerId: string; targetId?: string; x: number; y: number; z: number;
-  endX?: number; endY?: number; endZ?: number; text?: string; time: number; headshot?: boolean;
+  endX?: number; endY?: number; endZ?: number; text?: string; time: number; headshot?: boolean; weapon?: Weapon;
 }
 export interface Match {
   players: Player[]; scores: Record<Team, number>; endsAt: number;
@@ -43,9 +43,10 @@ export const INPUT_EXPIRY = 650;
 export const WEAPONS = {
   rifle: { name: "AR30", magazine: 30, reserve: 120, damage: 34, interval: 110, reload: 1900, range: 110 },
   pistol: { name: "P12", magazine: 12, reserve: 60, damage: 27, interval: 260, reload: 1250, range: 70 },
+  knife: { name: "Knife", magazine: 0, reserve: 0, damage: 55, interval: 550, reload: 0, range: 2.2 },
 } as const;
 const ZERO_INPUT: Input = { forward: 0, strafe: 0, yaw: 0, pitch: 0, shoot: false, reload: false, sprint: false, jump: false, seq: -1 };
-export const RULESET_VERSION = 3;
+export const RULESET_VERSION = 4;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const distance = (a: {x:number;z:number}, b: {x:number;z:number}) => Math.hypot(a.x-b.x,a.z-b.z);
 const finite = (v: unknown, fallback = 0) => typeof v === "number" && Number.isFinite(v) ? v : fallback;
@@ -56,7 +57,7 @@ export function sanitizeInput(value: Partial<Input> | null | undefined): Input {
   return { forward: clamp(finite(i.forward), -1, 1), strafe: clamp(finite(i.strafe), -1, 1),
     yaw: finite(i.yaw) % (Math.PI*2), pitch: clamp(finite(i.pitch), -1.45, 1.45),
     shoot: i.shoot === true, reload: i.reload === true, sprint: i.sprint === true, jump: i.jump === true,
-    weapon: i.weapon === "pistol" ? "pistol" : i.weapon === "rifle" ? "rifle" : undefined,
+    weapon: i.weapon === "pistol" || i.weapon === "rifle" || i.weapon === "knife" ? i.weapon : undefined,
     seq: Number.isSafeInteger(i.seq) && finite(i.seq, -1) >= 0 ? i.seq! : -1 };
 }
 function random(match: Match) {
@@ -67,7 +68,7 @@ function event(match: Match, type: GameEvent["type"], player: Player | undefined
   match.events.push({ id: ++match.eventId, type, playerId: player?.id ?? "", x: player?.x ?? 0, y: (player?.y ?? 0)+EYE_HEIGHT, z: player?.z ?? 0, time: match.time, ...extra });
   if (match.events.length > 48) match.events.splice(0, match.events.length-48);
 }
-function magazines(): Player["magazines"] { return { rifle: {ammo:30,reserve:120}, pistol: {ammo:12,reserve:60} }; }
+function magazines(): Player["magazines"] { return { rifle: {ammo:30,reserve:120}, pistol: {ammo:12,reserve:60}, knife: {ammo:0,reserve:0} }; }
 function spawn(match: Match, player: Player) {
   const allOptions = (match.spawns??SPAWNS)[player.team];
   const friends = match.players.filter(p=>p.id!==player.id&&p.team===player.team&&p.health>0);
@@ -83,7 +84,7 @@ function spawn(match: Match, player: Player) {
   Object.assign(player, { x:best.x, z:best.z, y:0, vy:0, health:100, respawnAt:0, reloadUntil:0,
     invulnerableUntil:match.time+1300, magazines:magazines(), weapon:"rifle", ammo:30, reserve:120,
     yaw:(match.spawnYaws??SPAWN_YAWS)[player.team], pitch:0, intent:{...ZERO_INPUT}, botTarget:-1,
-    botDecisionAt:0, nextBotShotAt:match.time+700, lastShotAt:0 });
+    botDecisionAt:0, nextBotShotAt:match.time+700, lastShotAt:0, lastAttackWeapon:undefined });
   event(match,"respawn",player);
 }
 function makePlayer(match: Match, name: string, team: Team, bot: boolean): Player {
@@ -155,7 +156,7 @@ function switchWeapon(player:Player, weapon:Weapon) {
   player.ammo=player.magazines[weapon].ammo;player.reserve=player.magazines[weapon].reserve;player.reloadUntil=0;
 }
 function beginReload(match:Match,player:Player) {
-  if(player.health<=0||player.reloadUntil>0||player.ammo>=WEAPONS[player.weapon].magazine||player.reserve<=0)return;
+  if(player.weapon==="knife"||player.health<=0||player.reloadUntil>0||player.ammo>=WEAPONS[player.weapon].magazine||player.reserve<=0)return;
   player.reloadUntil=match.time+WEAPONS[player.weapon].reload;event(match,"reload",player);
 }
 function finishRound(match:Match) {
@@ -164,9 +165,13 @@ function finishRound(match:Match) {
 }
 function shoot(match:Match,player:Player) {
   const gun=WEAPONS[player.weapon];
-  if(player.health<=0||match.winner||player.reloadUntil>0||match.time-player.lastShotAt<gun.interval)return;
-  if(player.ammo<=0){beginReload(match,player);return;}
-  player.ammo--;player.lastShotAt=match.time;player.invulnerableUntil=0;
+  const melee=player.weapon==="knife";
+  // Switching slots must not bypass the recovery time of the previous attack.
+  const recovery=Math.max(gun.interval,player.lastAttackWeapon?WEAPONS[player.lastAttackWeapon].interval:0);
+  if(player.health<=0||match.winner||player.reloadUntil>0||match.time-player.lastShotAt<recovery)return;
+  if(!melee&&player.ammo<=0){beginReload(match,player);return;}
+  if(!melee)player.ammo--;
+  player.lastShotAt=match.time;player.lastAttackWeapon=player.weapon;player.invulnerableUntil=0;
   const ox=player.x,oy=player.y+EYE_HEIGHT,oz=player.z;
   const dx=-Math.sin(player.yaw)*Math.cos(player.pitch),dy=Math.sin(player.pitch),dz=-Math.cos(player.yaw)*Math.cos(player.pitch);
   let range:number=gun.range;let victim:Player|undefined;let hitY=oy;
@@ -177,9 +182,9 @@ function shoot(match:Match,player:Player) {
     const t=rayBox(ox,oy-target.y,oz,dx,dy,dz,box);
     if(t<range){range=t;victim=target;hitY=oy+dy*t-target.y;}
   }
-  event(match,"shot",player,{endX:ox+dx*range,endY:oy+dy*range,endZ:oz+dz*range});
+  event(match,melee?"melee":"shot",player,{weapon:player.weapon,endX:ox+dx*range,endY:oy+dy*range,endZ:oz+dz*range});
   if(!victim||victim.team===player.team||victim.invulnerableUntil>match.time)return;
-  const headshot=hitY>1.38;
+  const headshot=!melee&&hitY>1.38;
   victim.health=Math.max(0,victim.health-gun.damage*(headshot?2:1));
   event(match,"hit",player,{targetId:victim.id,x:victim.x,y:victim.y+1.2,z:victim.z,headshot});
   if(victim.health<=0){

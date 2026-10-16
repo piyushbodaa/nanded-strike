@@ -143,6 +143,10 @@
   "landmarkReference": "/landmark-reference.json",
   "customLandmarkModels": [
     "Bhagya Nagar Kaman",
-    "Yeshwant College entrance"
-  ]
+    "Yeshwant College entrance",
+    "IIB Parnakuti",
+    "RCC Coaching",
+    "Konale NEET Center"
+  ],
+  "streetDetail": "Estimated rooftop water tanks and street-facing shutters, shade canopies and AC units decorate retained footprints; these fittings are not mapped measurements. Coaching facade placement and height caveats are in landmark-reference.json."
 }
