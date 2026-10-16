@@ -6,4 +6,4 @@
 - Whenever building or updating this game, deploy the working build to Vercel and give Boss the verified Vercel URL. A local-only link is not a completed delivery.
 - Keep multiplayer functional across separate browser sessions and Vercel Function instances. Do not replace durable room storage with process-local memory.
 
-- Current milestone: multiplayer with real people and no bots, plus solo map exploration. Spawn teams apart behind sightline-blocking buildings. Reconstruct recognizable local landmarks from verified visual references; generic footprint extrusions alone are insufficient.
+- Current milestone: human-only online multiplayer, a separate local Play with Bots mode with Counter-Terrorist and Terrorist teams, and solo map exploration. Bot matches support joining either team or watching an autonomous match. Spawn teams apart behind sightline-blocking buildings. Reconstruct recognizable local landmarks from verified visual references; generic footprint extrusions alone are insufficient.

@@ -3,7 +3,7 @@ import { LOCATIONS, DEFAULT_LOCATION_ID } from "./locations";
 import { addPlayer, advanceMatch, applyInput, createMatch, removePlayer, sanitizeMatch, snapshot, type Input, type Match, type MatchMode } from "./simulation";
 
 interface Session { playerId: string; tokenHash: string; lastSeen: number; }
-interface Payload { action?: string; name?: string; room?: string; token?: string; team?: string; locationId?: string; mode?: unknown; input?: Partial<Input>; }
+interface Payload { action?: string; name?: string; room?: string; token?: string; team?: string; locationId?: string; mode?: unknown; bots?: unknown; input?: Partial<Input>; }
 export const PUBLIC_ROOM = "NANDED";
 export const CLASSIC_PUBLIC_ROOM = "CLASSC";
 export const PUBLIC_ROOMS = { deathmatch: PUBLIC_ROOM, classic: CLASSIC_PUBLIC_ROOM } as const;
@@ -35,6 +35,7 @@ return async function POST(request:Request) {
     try { payload=JSON.parse(body) as Payload; } catch { throw new GameError("Expected a JSON game request.",400); }
     if(!payload||typeof payload!=="object"||Array.isArray(payload))throw new GameError("Invalid game request.",400);
     if(!["create","quickjoin","join","input","leave"].includes(payload.action??""))throw new GameError("Unknown game action.",400);
+    if(payload.bots!==undefined&&payload.bots!==false)throw new GameError("Bot matches run on this device. Online rooms are for human players.",400);
     const rooms = storeFactory();
     const now=clock();
     const publicJoin=payload.action==="quickjoin";
@@ -76,6 +77,9 @@ return async function POST(request:Request) {
       if(expiredRoom&&!publicJoin)throw new GameError("Room not found or expired. Check the code or create a new room.",404);
       let state=expiredRoom?createMatch(clock(),{locationId:DEFAULT_LOCATION_ID,mode}):JSON.parse(row.state) as Match;
       const tick=Math.max(clock(),row.updated_at,state.time);
+      // Local bot opt-in is never a durable-room capability. Clear it before
+      // migration/advancement, including copied local or older persisted data.
+      state.bots=false;
       sanitizeMatch(state);
       let sessions:Session[]=expiredRoom?[]:JSON.parse(row.sessions) as Session[];
       const session=tokenHash?sessions.find(s=>s.tokenHash===tokenHash):undefined;

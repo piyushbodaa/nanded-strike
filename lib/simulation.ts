@@ -3,6 +3,7 @@ import { LOCATIONS, DEFAULT_LOCATION_ID } from "./locations";
 import SPAWN_LAYOUTS from "./spawn-layouts.json";
 import { SpatialGrid } from "./spatial";
 import { raySolid, touchesSolid } from "./geometry";
+import { decideBot, type BotState } from "./bot-ai";
 
 export type Team = "blue" | "orange";
 export type MatchMode = "deathmatch" | "classic";
@@ -46,6 +47,7 @@ export interface Player {
   lastAttackSecondary: boolean; attackRecoveryUntil: number; shotsInBurst: number;
   lastSeq: number; vy: number; intent: Input; magazines: Record<Weapon, { ammo: number; reserve: number }>;
   botTarget: number; botDecisionAt: number; nextBotShotAt: number;
+  botState?: BotState;
 }
 /** Shot events contain muzzle position and endX/endY/endZ; hit/kill identify the victim. */
 export interface GameEvent {
@@ -58,7 +60,7 @@ export interface Match {
   mode: MatchMode; classic?: ClassicState; grenades: GrenadeProjectile[]; smokes: SmokeCloud[];
   winner: Team | "draw" | null; events: GameEvent[]; time: number;
   startedAt: number; round: number; winnerAt: number; nextId: number; eventId: number; seed: number;
-  locationId?: string; exploration?: boolean; rulesVersion?: number;
+  locationId?: string; exploration?: boolean; rulesVersion?: number; bots?: boolean;
   spawns?: Record<Team,{x:number;z:number}[]>; spawnYaws?: Record<Team,number>;
 }
 export const EYE_HEIGHT = 1.58;
@@ -135,7 +137,7 @@ function spawn(match: Match, player: Player) {
     invulnerableUntil:match.time+1300, magazines:magazines(), weapon:"rifle", ammo:30, reserve:120,
     yaw:(match.spawnYaws??SPAWN_YAWS)[player.team], pitch:0, intent:{...ZERO_INPUT}, botTarget:-1,
     botDecisionAt:0, nextBotShotAt:match.time+700, lastShotAt:0, lastAttackWeapon:undefined,
-    lastAttackSecondary:false, attackRecoveryUntil:0,shotsInBurst:0, aiming:false, crouched:false, walking:false,flashedUntil:0 });
+    lastAttackSecondary:false, attackRecoveryUntil:0,shotsInBurst:0, aiming:false, crouched:false, walking:false,flashedUntil:0,botState:undefined });
   event(match,"respawn",player);
 }
 function makePlayer(match: Match, name: string, team: Team, bot: boolean): Player {
@@ -152,7 +154,7 @@ function makePlayer(match: Match, name: string, team: Team, bot: boolean): Playe
   }
   return player;
 }
-export interface MatchOptions {locationId?:string;start?:{x:number;z:number;yaw:number};exploration?:boolean;mode?:MatchMode;}
+export interface MatchOptions {locationId?:string;start?:{x:number;z:number;yaw:number};exploration?:boolean;mode?:MatchMode;bots?:boolean;}
 function sectorSpawns(locationId:string) {
   const layout=SPAWN_LAYOUTS[locationId as keyof typeof SPAWN_LAYOUTS]??SPAWN_LAYOUTS[DEFAULT_LOCATION_ID];
   return {spawns:{blue:layout.spawns.blue.map(p=>({...p})),orange:layout.spawns.orange.map(p=>({...p}))},spawnYaws:{...layout.spawnYaws}};
@@ -162,19 +164,21 @@ export function createMatch(now: number, options:MatchOptions={}): Match {
   const location=LOCATIONS.find(l=>l.id===options.locationId)??(options.start?[...LOCATIONS].sort((a,b)=>distance(a,options.start!)-distance(b,options.start!))[0]:LOCATIONS.find(l=>l.id===DEFAULT_LOCATION_ID)!);
   const match:Match={players:[],scores:{blue:0,orange:0},endsAt:time+MATCH_DURATION,winner:null,events:[],time,
     mode:options.exploration?"deathmatch":options.mode??"deathmatch",grenades:[],smokes:[],
+    bots:options.bots===true&&!options.exploration,
     startedAt:time,round:1,winnerAt:0,nextId:1,eventId:0,seed:(time>>>0)||12345,
     rulesVersion:RULESET_VERSION,locationId:location.id,exploration:options.exploration??false,...sectorSpawns(location.id)};
   if(match.mode==="classic")match.classic=createClassicState(match);
   return match;
 }
-/** Migrate persisted rooms once, and never allow an old bot to enter simulation/snapshots. */
+/** Legacy/network rooms remain human-only; bots require an explicit local match opt-in. */
 export function sanitizeMatch(match:Match):void {
-  const hadBots=match.players.some(player=>player.bot);
-  if(!hadBots&&match.rulesVersion===RULESET_VERSION)return;
-  match.players=match.players.filter(player=>!player.bot);
+  const allowBots=match.bots===true&&!match.exploration;
+  const disallowedBots=!allowBots&&match.players.some(player=>player.bot);
+  if(!disallowedBots&&match.rulesVersion===RULESET_VERSION)return;
+  match.players=match.players.filter(player=>allowBots||!player.bot);
   const location=LOCATIONS.find(l=>l.id===match.locationId)??LOCATIONS.find(l=>l.id===DEFAULT_LOCATION_ID)!;
   Object.assign(match,sectorSpawns(location.id),{locationId:location.id,rulesVersion:RULESET_VERSION,
-    mode:match.exploration?"deathmatch":match.mode??"deathmatch",grenades:[],smokes:[],round:1,
+    mode:match.exploration?"deathmatch":match.mode??"deathmatch",bots:allowBots,grenades:[],smokes:[],round:1,
     scores:{blue:0,orange:0},winner:null,winnerAt:0,startedAt:match.time,endsAt:match.time+MATCH_DURATION,events:[]});
   match.classic=match.mode==="classic"?createClassicState(match):undefined;
   for(const player of match.players){
@@ -185,13 +189,34 @@ export function sanitizeMatch(match:Match):void {
 }
 export function addPlayer(match: Match, name: string, requestedTeam?: Team): Player {
   sanitizeMatch(match);
-  if (match.players.filter(p=>!p.bot).length >= 8) throw new Error("This room is full. Try another room.");
-  const blue = match.players.filter(p=>!p.bot&&p.team==="blue").length;
-  const orange = match.players.filter(p=>!p.bot&&p.team==="orange").length;
+  if (match.players.length >= 8) throw new Error("This room is full. Try another room.");
+  const blue = match.players.filter(p=>p.team==="blue").length;
+  const orange = match.players.filter(p=>p.team==="orange").length;
   let team: Team = requestedTeam === "blue" || requestedTeam === "orange" ? requestedTeam : blue <= orange ? "blue" : "orange";
   if ((team === "blue" ? blue : orange) >= 4) team = team === "blue" ? "orange" : "blue";
   const safeName = String(name ?? "").replace(/[\u0000-\u001f\u007f<>]/g,"").trim().slice(0,18)||"PLAYER";
   return makePlayer(match,safeName,team,false);
+}
+export function addBot(match:Match,name:string,team:Team):Player {
+  if(match.bots!==true||match.exploration)throw new Error("Bots are available only in an explicitly enabled local bot match.");
+  sanitizeMatch(match);
+  if(team!=="blue"&&team!=="orange")throw new Error("Choose a valid bot team.");
+  if(match.players.length>=8||match.players.filter(player=>player.team===team).length>=4)throw new Error("This bot team is full.");
+  const safeName=String(name??"").replace(/[\u0000-\u001f\u007f<>]/g,"").trim().slice(0,18)||"BOT";
+  return makePlayer(match,safeName,team,true);
+}
+export function fillBotTeams(match:Match):void {
+  if(match.bots!==true||match.exploration)throw new Error("Enable a local bot match before filling teams.");
+  for(const team of ["blue","orange"] as const){
+    let count=match.players.filter(player=>player.team===team).length;
+    const names=['Alpha','Bravo','Charlie','Delta','Echo','Foxtrot','Golf','Hotel'];
+    while(count<4){addBot(match,`BOT ${names[match.players.filter(player=>player.bot).length]}`,team);count++;}
+  }
+}
+export function createBotMatch(now:number,options:MatchOptions&{name?:string;team?:Team|"spectator"}={}):{match:Match;playerId:string|null} {
+  const match=createMatch(now,{...options,mode:options.mode??"classic",bots:true,exploration:false});
+  const player=options.team==="spectator"?undefined:addPlayer(match,options.name??"PLAYER",options.team??"blue");
+  fillBotTeams(match);return {match,playerId:player?.id??null};
 }
 export function removePlayer(match: Match, playerId: string) {
   sanitizeMatch(match);
@@ -504,6 +529,9 @@ function shoot(match:Match,player:Player,secondary=false) {
 export function applyInput(match:Match,playerId:string,raw:Partial<Input>,now:number) {
   advanceMatch(match,now);
   const player=match.players.find(p=>p.id===playerId&&!p.bot);if(!player)return;
+  executeInput(match,player,raw);
+}
+function executeInput(match:Match,player:Player,raw:Partial<Input>) {
   const input=sanitizeInput(raw); if(input.seq<=player.lastSeq)return;
   const weaponChanged=input.weapon!==undefined&&input.weapon!==player.weapon&&player.inventory.includes(input.weapon);
   player.lastSeq=input.seq;player.lastInputAt=match.time;player.intent=input;
@@ -526,6 +554,21 @@ export function applyInput(match:Match,playerId:string,raw:Partial<Input>,now:nu
   if(!sprinting(player,input)&&(input.shoot||(input.secondary&&player.weapon==="knife")))shoot(match,player,input.secondary===true&&player.weapon==="knife");
   if(match.mode==="classic")tickClassicState(match);
 }
+function botCanSee(match:Match,player:Player,target:Player):boolean {
+  const ay=player.y+playerEyeHeight(player),by=target.y+(target.crouched?.7:1.06);
+  if(!unobstructed(player.x,ay,player.z,target.x,by,target.z))return false;
+  const dx=target.x-player.x,dy=by-ay,dz=target.z-player.z,lengthSquared=dx*dx+dy*dy+dz*dz||1;
+  return !match.smokes.some(smoke=>{
+    const t=clamp(((smoke.x-player.x)*dx+(smoke.y-ay)*dy+(smoke.z-player.z)*dz)/lengthSquared,0,1);
+    return Math.hypot(player.x+dx*t-smoke.x,ay+dy*t-smoke.y,player.z+dz*t-smoke.z)<smoke.radius;
+  });
+}
+function updateBot(match:Match,player:Player) {
+  if(match.bots!==true||!player.bot||match.time<player.botDecisionAt)return;
+  const input=decideBot(match,player,{random:()=>random(match),canSee:target=>botCanSee(match,player,target),canBuy:canBuy(match,player),eyeHeight:playerEyeHeight,weapons:WEAPONS});
+  player.botDecisionAt=match.time+200+random(match)*35;
+  executeInput(match,player,input);
+}
 function restartRound(match:Match) {
   match.round++;match.startedAt=match.time;match.endsAt=match.time+MATCH_DURATION;match.scores={blue:0,orange:0};match.winner=null;match.winnerAt=0;
   for(const p of match.players){p.kills=0;p.deaths=0;spawn(match,p);}
@@ -547,6 +590,7 @@ export function advanceMatch(match:Match,now:number) {
     for(const p of match.players){
       if(p.health<=0){if(match.mode!=="classic"&&p.respawnAt<=match.time)spawn(match,p);else continue;}
       if(p.reloadUntil&&p.reloadUntil<=match.time){const count=Math.min(WEAPONS[p.weapon].magazine-p.ammo,p.reserve);p.ammo+=count;p.reserve-=count;p.reloadUntil=0;}
+      if(p.bot)updateBot(match,p);
       const input=match.time-p.lastInputAt<INPUT_EXPIRY?p.intent:{...ZERO_INPUT};
       movePlayer(match,p,input,delta/1000);
       if(input.reload)beginReload(match,p);
@@ -561,6 +605,27 @@ export function advanceMatch(match:Match,now:number) {
   else{
     if(!match.exploration&&!match.winner&&destination>=match.endsAt)finishRound(match);
     if(match.winner&&destination-match.winnerAt>=7000)restartRound(match);
+  }
+}
+/** Pause local play without consuming bomb, reload, utility, reaction or round timers. */
+export function shiftMatchTime(match:Match,elapsedMs:number):void {
+  const delay=Math.max(0,finite(elapsedMs));if(!delay)return;
+  match.time+=delay;match.startedAt+=delay;match.endsAt+=delay;if(match.winnerAt)match.winnerAt+=delay;
+  for(const item of match.events)item.time+=delay;
+  for(const player of match.players){
+    for(const key of ['respawnAt','reloadUntil','invulnerableUntil','lastShotAt','lastInputAt','botDecisionAt','nextBotShotAt','attackRecoveryUntil','flashedUntil'] as const){
+      if(player[key])player[key]+=delay;
+    }
+    if(player.botState)for(const key of ['plannedAt','lastProgressAt','seenAt','lastSeenAt','burstUntil','nextUtilityAt'] as const){
+      if(player.botState[key])player.botState[key]+=delay;
+    }
+  }
+  for(const grenade of match.grenades)grenade.explodeAt+=delay;
+  for(const smoke of match.smokes)smoke.expiresAt+=delay;
+  if(match.classic){
+    if(match.classic.phaseEndsAt)match.classic.phaseEndsAt+=delay;
+    if(match.classic.bomb.explodeAt)match.classic.bomb.explodeAt+=delay;
+    if(match.classic.bomb.action){match.classic.bomb.action.startedAt+=delay;match.classic.bomb.action.completesAt+=delay;}
   }
 }
 /** No auth material is ever stored in the simulation or sent to another player. */
