@@ -6,6 +6,8 @@
 
 An original browser FPS set in **Bhagya Nagar and nearby Nanded neighbourhoods, Maharashtra**. The first screen offers three clear choices: **Play with Bots**, **Play Online**, and **Explore Nanded**. Bot matches start locally without waiting for other people. Online rooms contain real human players only, and exploration is a peaceful solo mode. No account is required.
 
+The original olive-and-amber startup briefing follows actual game, asset and scene loading. **Skip Intro** opens the menu while loading continues; the briefing closes immediately when the game is ready, without an artificial delay. Menus, weapon selection and round announcements use brief transitions, and reloading has a live progress indicator. Match-entry and round banners never intercept input and disappear within 1.1 seconds. The device's **reduced motion** preference disables decorative motion and transient match banners.
+
 The approximately 1.96 × 1.45 km map preserves mapped street geometry and 5,887 source building outlines. Two obsolete forecourt pieces at Amrut are omitted from the displayed map after comparison with newer photographs; all original outlines remain in the source dataset. Choose a starting area: Bhagya Nagar, Workshop Corner, Shri Nagar, Anand Nagar, Yashwant College Road, Baba Nagar, ITI Shri Nagar, IIB Parnakuti, RCC Coaching, or Konale NEET Center. Locality labels identify starting sectors, not surveyed neighbourhood boundaries. Building heights, façades, road widths, signs, and other visual details are estimated; this is not a photographic reconstruction. Detailed provenance and limitations are in [public/map-reference.json](public/map-reference.json).
 
 Use **Places** to search **575 named locations** across Bhagya Nagar, Workshop Corner, Anand Nagar, Shri Nagar and Yashwant College Road. Filter shops, food, hotels, education, health, landmarks and services, view the surrounding street map, then choose **Visit in solo** for a walkable approach. The directory remains available during matches, with solo visits disabled. Nearby places also appear on the minimap. Listings come from the complete reconciled source extract, not a door-to-door survey; 169 low-confidence listings and 45 shared-coordinate listings are flagged. Current opening status is not established. [Place coverage and audit](public/place-reference.json) record every included, merged and excluded candidate.
@@ -36,7 +38,9 @@ GAME_ALLOW_LOCAL_SQLITE=1 npm start
 
 **Play with Bots** starts immediately with the visible team selection. The default is **CT / Counter-Terrorists**; choose **T / Terrorists** to attack, or **Watch** to spectate an all-bot match. Teams are 4 versus 4: you and seven bots, or eight bots when watching. **Bomb Defusal** is the default rule set; **Deathmatch** is also available. The map-start selector chooses where the local match begins. While watching, **Next Bot** switches the followed player, and the HUD identifies bots separately from you. Pause stops the local match.
 
-Bots navigate the mapped streets, buy affordable equipment, reload, and fight visible opponents with reaction delays and aiming error. In Bomb Defusal, T bots carry and plant the bomb while CT bots defend and defuse. They use the same combat, economy, round timers and side-switch rules as human players. This is lightweight practice AI, not a recreation of Valve's bots.
+Choose **Beginner**, **Easy**, **Normal**, or **Hard** before starting. **Beginner** is the default: bots react slowly, miss more often, fire short bursts with long pauses, avoid HE and flash attacks, and deal **70% less damage to you**. Easy uses slower reactions and wider aim with standard damage and no HE or flash attacks. Normal adds steadier aim and grenade attacks; Hard has fast reactions, accurate tracking and sustained bursts. Your choice is saved on this device and shown in the bot-match HUD. Change it from the pause menu without restarting the round; the match stays paused until you resume. Difficulty affects local bot matches only.
+
+Bots navigate the mapped streets, buy affordable equipment, reload, and fight visible opponents with reaction delays and aiming error. In Bomb Defusal, T bots carry and plant the bomb while CT bots defend and defuse. They share the economy, round timers and side-switch rules used by human players; difficulty changes their combat behavior and Beginner reduces their damage to the human player. This is lightweight practice AI, not a recreation of Valve's bots.
 
 **Play Online** joins the selected mode's public match in Bhagya Nagar, up to eight real players: `CLASSC` for Bomb Defusal and `NANDED` for Deathmatch. **Create private room** uses the selected mode and location and gives you a six-character code and invite link. **Join a room** follows the existing room's mode; opening an invite pre-fills its code and waits for your click.
 
@@ -96,10 +100,13 @@ HEADED=1 node tests/places-browser.mjs
 HEADED=1 node tests/classic-browser.mjs
 HEADED=1 node tests/combat-browser.mjs
 HEADED=1 node tests/bots-browser.mjs
+HEADED=1 node tests/animation-browser.mjs
 node --import tsx tests/classic-objective-browser.mjs
 ```
 
-The bot browser check covers CT/T joining, local purchases, pause/resume, rotation, spectator switching and an autonomous round on the real map, and verifies that no online room request is made.
+The bot browser check covers CT/T joining, local purchases, pause/resume, all four difficulty choices, a keyboard-only difficulty change while paused, saved preferences, rotation, spectator switching and an autonomous round on the real map. It verifies that no online room request is made.
+
+The animation browser check holds an actual character-model response to inspect the loading briefing and confirms that skipping opens the menu without falsely enabling play or losing settings changed during loading. It observes rendered match-entry animation frames, checks that the banner cannot intercept input, and verifies reduced-motion behavior plus phone portrait/landscape layouts.
 
 The browser script defaults to `http://127.0.0.1:5173` and `/usr/bin/chromium`. Override `TEST_URL` (or `BASE_URL`) and `CHROMIUM_PATH` when needed. Use `HEADED=1` for hardware-rendered interaction checks: a slow software renderer can exceed the 650 ms stale-input deadline. `TEST_SCOPE=screen` runs the private-room rotation and phone-loadout checks on their own. Screenshots are written to `test-results/multiplayer/`.
 

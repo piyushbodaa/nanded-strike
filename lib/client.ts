@@ -4,24 +4,25 @@ import { createActor, loadActorAsset, updateActor, disposeActor, type Actor } fr
 import { createWeaponView } from './weapon-view';
 import { createCombatEffects } from './combat-effects';
 import { LOCATIONS, DEFAULT_LOCATION_ID } from './locations';
-import { createMatch, createBotMatch, addPlayer, applyInput, advanceMatch, shiftMatchTime, movePlayer, playerEyeHeight, canBuy, WEAPONS, type Weapon, type MatchMode as GameMode, type PurchaseId, type GrenadeType as GrenadeKind } from './simulation';
+import { createMatch, createBotMatch, setBotDifficulty as setMatchBotDifficulty, addPlayer, applyInput, advanceMatch, shiftMatchTime, movePlayer, playerEyeHeight, canBuy, WEAPONS, type Weapon, type MatchMode as GameMode, type PurchaseId, type GrenadeType as GrenadeKind } from './simulation';
 import { COLLIDERS, MAP_BOUNDS, ROADS, SPAWN_YAWS } from './map';
 import { getPlace, PLACES, PLACE_CATEGORIES } from './places';
 import { placeViewpoint } from './place-layout';
+import { DEFAULT_BOT_DIFFICULTY, normalizeBotDifficulty, type BotDifficulty } from './bot-difficulty';
 
 type Match = ReturnType<typeof createMatch>;
 type Player = Match['players'][number];
 export type Mode = 'lobby' | 'solo' | 'online';
 export type Settings = { sensitivity: number; volume: number; quality: 'high' | 'low' };
 export type HUD = {
-  now: number; location:string; exploration:boolean; botMatch:boolean; watching:boolean;
+  now: number; location:string; exploration:boolean; botMatch:boolean; watching:boolean; botDifficulty:BotDifficulty;
   spectating:string; round:number; canBuy:boolean; aim:number; scoped:boolean; crouched:boolean; gameMode:GameMode; classic:Match['classic']|null; buyOpen:boolean; selectedGrenade:GrenadeKind;
   mode: Mode; paused: boolean; player: Player | null; players: Player[];
   scores: { blue: number; orange: number }; remaining: number; room: string;
   ping: number; winner: string | null; feed: { id: string; text: string }[];
   hit: boolean; hurt: boolean; connected: boolean; scoreboard: boolean;
 };
-export const emptyHUD: HUD = { botMatch:false,watching:false,spectating:'',round:1,canBuy:false,aim:0,scoped:false,crouched:false,gameMode:'deathmatch',classic:null,buyOpen:false,selectedGrenade:'he',now:0, location:'Bhagya Nagar', exploration:false, mode:'lobby', paused:false, player:null, players:[], scores:{blue:0,orange:0}, remaining:300, room:'',ping:0,winner:null,feed:[],hit:false,hurt:false,connected:true,scoreboard:false };
+export const emptyHUD: HUD = { botDifficulty:DEFAULT_BOT_DIFFICULTY,botMatch:false,watching:false,spectating:'',round:1,canBuy:false,aim:0,scoped:false,crouched:false,gameMode:'deathmatch',classic:null,buyOpen:false,selectedGrenade:'he',now:0, location:'Bhagya Nagar', exploration:false, mode:'lobby', paused:false, player:null, players:[], scores:{blue:0,orange:0}, remaining:300, room:'',ping:0,winner:null,feed:[],hit:false,hurt:false,connected:true,scoreboard:false };
 
 class Sound {
   ctx: AudioContext | null = null;
@@ -79,7 +80,7 @@ export class GameClient {
     this.camera.rotation.order='YXZ';this.scene.add(this.camera);this.world=createWorld(this.scene);this.combatEffects=createCombatEffects(this.scene);
     this.weaponView=createWeaponView(this.camera);this.weapon=this.weaponView.group;
     this.bind();this.resize();
-    Object.defineProperty(window,'__NANDED_DEBUG__',{configurable:true,get:()=>({mode:this.mode,botMatch:this.match?.bots===true,watching:this.watching,spectating:this.spectating,spectatingId:this.spectatingId,round:this.match?.round,scores:this.match?.scores,events:this.match?.events,visitingPlaceId:this.visitingPlaceId,world:this.world.stats,location:this.location,locationId:this.match?.locationId,exploration:this.match?.exploration??false,pixelRatio:this.renderer.getPixelRatio(),animations:[...this.characters.values()].map(a=>a.animationState),phase:this.paused?'paused':this.mode==='lobby'?'lobby':'playing',playerId:this.playerId,roomCode:this.room,selectedWeapon:this.selectedWeapon,weapon:this.me?.weapon,aim:this.aimLevel,aimBlend:this.aimBlend,fov:this.camera.fov,cameraY:this.camera.position.y,shooting:this.shooting,buyOpen:this.buyOpen,gameMode:this.match?.mode,classic:this.match?.classic,grenades:this.match?.grenades,smokes:this.match?.smokes,visibleWeapon:this.weapon.children.filter(child=>child.visible).map(child=>child.name),lastAttackAt:this.me?.lastShotAt,reloadUntil:this.me?.reloadUntil,localPlayer:this.me?{x:this.me.x,z:this.me.z,health:this.me.health,ammo:this.me.ammo,weapon:this.me.weapon,crouched:this.me.crouched,aiming:this.me.aiming,walking:this.me.walking,money:this.me.money,armor:this.me.armor,defuseKit:this.me.defuseKit,flashedUntil:this.me.flashedUntil,inventory:this.me.inventory,grenades:this.me.grenades,lastAttackSecondary:this.me.lastAttackSecondary}:null,players:this.match?.players.map(p=>({id:p.id,name:p.name,x:p.x,z:p.z,kills:p.kills,deaths:p.deaths,bot:p.bot,team:p.team,weapon:p.weapon,health:p.health,crouched:p.crouched,aiming:p.aiming,money:p.money})),yaw:this.yaw,pitch:this.pitch,touchSprint:this.touchSprint,ammo:this.me?.ammo,health:this.me?.health,renderer:this.renderer.info.render})});
+    Object.defineProperty(window,'__NANDED_DEBUG__',{configurable:true,get:()=>({mode:this.mode,botMatch:this.match?.bots===true,botDifficulty:normalizeBotDifficulty(this.match?.botDifficulty),watching:this.watching,spectating:this.spectating,spectatingId:this.spectatingId,round:this.match?.round,scores:this.match?.scores,events:this.match?.events,visitingPlaceId:this.visitingPlaceId,world:this.world.stats,location:this.location,locationId:this.match?.locationId,exploration:this.match?.exploration??false,pixelRatio:this.renderer.getPixelRatio(),animations:[...this.characters.values()].map(a=>a.animationState),phase:this.paused?'paused':this.mode==='lobby'?'lobby':'playing',playerId:this.playerId,roomCode:this.room,selectedWeapon:this.selectedWeapon,weapon:this.me?.weapon,aim:this.aimLevel,aimBlend:this.aimBlend,fov:this.camera.fov,cameraY:this.camera.position.y,shooting:this.shooting,buyOpen:this.buyOpen,gameMode:this.match?.mode,classic:this.match?.classic,grenades:this.match?.grenades,smokes:this.match?.smokes,visibleWeapon:this.weapon.children.filter(child=>child.visible).map(child=>child.name),lastAttackAt:this.me?.lastShotAt,reloadUntil:this.me?.reloadUntil,localPlayer:this.me?{x:this.me.x,z:this.me.z,health:this.me.health,ammo:this.me.ammo,weapon:this.me.weapon,crouched:this.me.crouched,aiming:this.me.aiming,walking:this.me.walking,money:this.me.money,armor:this.me.armor,defuseKit:this.me.defuseKit,flashedUntil:this.me.flashedUntil,inventory:this.me.inventory,grenades:this.me.grenades,lastAttackSecondary:this.me.lastAttackSecondary}:null,players:this.match?.players.map(p=>({id:p.id,name:p.name,x:p.x,z:p.z,kills:p.kills,deaths:p.deaths,bot:p.bot,team:p.team,weapon:p.weapon,health:p.health,crouched:p.crouched,aiming:p.aiming,money:p.money})),yaw:this.yaw,pitch:this.pitch,touchSprint:this.touchSprint,ammo:this.me?.ammo,health:this.me?.health,renderer:this.renderer.info.render})});
     this.simulationTimer=setInterval(()=>this.tick(),1000/60);
     this.frame=requestAnimationFrame(this.animate);
   }
@@ -109,10 +110,11 @@ export class GameClient {
     }}) as EventListener);
     this.listen(window,'keydown',((e:KeyboardEvent)=>{
       if(this.mode==='lobby'||e.target instanceof HTMLInputElement||e.target instanceof HTMLSelectElement||e.target instanceof HTMLTextAreaElement)return;
-      if(['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','AltLeft','AltRight','ControlLeft','ControlRight'].includes(e.code))e.preventDefault();
       if(e.code==='Escape'){if(this.buyOpen)this.toggleBuy(false);else this.pause();return;}
       if(e.code==='KeyB'&&!e.repeat&&!this.paused){this.toggleBuy();return;}
-      if(this.paused||this.buyOpen)return;this.keys.add(e.code);
+      if(this.paused||this.buyOpen)return;
+      if(['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','AltLeft','AltRight','ControlLeft','ControlRight'].includes(e.code))e.preventDefault();
+      this.keys.add(e.code);
       if(e.code==='KeyR'&&!e.repeat)this.reload();
       if(e.code==='Space'&&!e.repeat)this.jumping=true;
       if(e.code==='Digit1')this.selectWeapon(this.ownedWeapons.find(w=>!['pistol','knife'].includes(w))??'pistol');
@@ -164,11 +166,15 @@ export class GameClient {
     if(exploration){p.x=location.x;p.z=location.z;p.yaw=location.yaw;}
     this.mode='solo';this.setupPlayer();if(exploration)this.pitch=location.pitch??0;this.sound.unlock();this.resume();this.emitHUD();
   }
-  startBots(name:string,locationId=DEFAULT_LOCATION_ID,gameMode:GameMode='classic',team:'blue'|'orange'|'spectator'='blue'){
+  startBots(name:string,locationId=DEFAULT_LOCATION_ID,gameMode:GameMode='classic',team:'blue'|'orange'|'spectator'='blue',difficulty:BotDifficulty=DEFAULT_BOT_DIFFICULTY){
     this.leave();const location=LOCATIONS.find(l=>l.id===locationId)??LOCATIONS[0];
-    const result=createBotMatch(Date.now(),{name:name||'Operator',team,locationId:location.id,start:location,mode:gameMode});
+    const result=createBotMatch(Date.now(),{name:name||'Operator',team,locationId:location.id,start:location,mode:gameMode,botDifficulty:normalizeBotDifficulty(difficulty)});
     this.match=result.match;this.playerId=result.playerId??'';this.watching=team==='spectator';
     this.mode='solo';this.setupPlayer();this.sound.unlock();this.resume();this.emitHUD();
+  }
+  setBotDifficulty(difficulty:BotDifficulty){
+    if(this.mode!=='solo'||!this.match?.bots)return;
+    setMatchBotDifficulty(this.match,normalizeBotDifficulty(difficulty));this.emitHUD();
   }
   visitPlace(placeId:string,name:string){
     if(this.mode==='online')return;
@@ -185,7 +191,7 @@ export class GameClient {
     this.match=result.state;this.playerId=result.playerId;this.token=result.token;this.room=result.room;this.mode='online';this.setupPlayer();
     this.sound.unlock();this.setPaused(true);this.emitHUD();this.poll();
   }
-  setupPlayer(){const p=this.me;if(!p)return;this.yaw=p.yaw;this.pitch=0;this.resetControls();this.selectedWeapon=p.weapon;this.previousWeapon='knife';this.seq=0;this.predicted={...p};this.displayPosition.set(p.x,p.y+playerEyeHeight(p),p.z);this.previousHealth=p.health;this.seenEvents=new Set(this.match?.events.map(event=>String(event.id)));this.feed=[];this.connected=true;this.weapon.visible=true;}
+  setupPlayer(){const p=this.me;if(!p)return;this.weaponView.resetDraw();this.yaw=p.yaw;this.pitch=0;this.resetControls();this.selectedWeapon=p.weapon;this.previousWeapon='knife';this.seq=0;this.predicted={...p};this.displayPosition.set(p.x,p.y+playerEyeHeight(p),p.z);this.previousHealth=p.health;this.seenEvents=new Set(this.match?.events.map(event=>String(event.id)));this.feed=[];this.connected=true;this.weapon.visible=true;}
   input(){const active=this.controlsActive;return {
     forward:active?this.touchMove.forward+Number(this.keys.has('KeyW')||this.keys.has('ArrowUp'))-Number(this.keys.has('KeyS')||this.keys.has('ArrowDown')):0,
     strafe:active?this.touchMove.strafe+Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft')):0,
@@ -326,7 +332,7 @@ export class GameClient {
     if(t-this.lastHUD>90){this.emitHUD();this.lastHUD=t;}
     if(this.mode!=='lobby'||this.lobbyDirty){this.renderer.render(this.scene,this.camera);this.lobbyDirty=false;}this.frame=requestAnimationFrame(this.animate);
   };
-  emitHUD(){const now=Date.now();this.onHUD({botMatch:this.match?.bots===true,watching:this.watching,spectating:this.spectating,round:this.match?.round??1,canBuy:!this.watching&&!!this.match&&!!this.me&&canBuy(this.match,this.me),aim:this.aimLevel,scoped:this.aimBlend>.92&&(this.me?.weapon==='rifle'||this.me?.weapon==='sniper'),crouched:!!this.me?.crouched,gameMode:this.match?.mode??'deathmatch',classic:this.match?.classic??null,buyOpen:this.buyOpen,selectedGrenade:this.selectedGrenade,now,location:this.location,exploration:this.match?.exploration??false,mode:this.mode,paused:this.paused,player:this.me?{...this.me}:null,players:this.match?.players.map(p=>({...p}))??[],scores:this.match?.scores??{blue:0,orange:0},remaining:Math.max(0,Math.ceil(((this.match?.classic?.phaseEndsAt??this.match?.endsAt??now+300000)-(this.mode==='solo'&&this.paused?this.pausedAt:now))/1000)),room:this.room,ping:this.ping,winner:this.match?.winner??null,feed:this.feed.map(({id,text})=>({id,text})),hit:now<this.hitUntil,hurt:now<this.hurtUntil,connected:this.connected,scoreboard:this.scoreboard});}
+  emitHUD(){const now=Date.now();this.onHUD({botMatch:this.match?.bots===true,botDifficulty:normalizeBotDifficulty(this.match?.botDifficulty),watching:this.watching,spectating:this.spectating,round:this.match?.round??1,canBuy:!this.watching&&!!this.match&&!!this.me&&canBuy(this.match,this.me),aim:this.aimLevel,scoped:this.aimBlend>.92&&(this.me?.weapon==='rifle'||this.me?.weapon==='sniper'),crouched:!!this.me?.crouched,gameMode:this.match?.mode??'deathmatch',classic:this.match?.classic??null,buyOpen:this.buyOpen,selectedGrenade:this.selectedGrenade,now,location:this.location,exploration:this.match?.exploration??false,mode:this.mode,paused:this.paused,player:this.me?{...this.me}:null,players:this.match?.players.map(p=>({...p}))??[],scores:this.match?.scores??{blue:0,orange:0},remaining:Math.max(0,Math.ceil(((this.match?.classic?.phaseEndsAt??this.match?.endsAt??now+300000)-(this.mode==='solo'&&this.paused?this.pausedAt:now))/1000)),room:this.room,ping:this.ping,winner:this.match?.winner??null,feed:this.feed.map(({id,text})=>({id,text})),hit:now<this.hitUntil,hurt:now<this.hurtUntil,connected:this.connected,scoreboard:this.scoreboard});}
   drawMinimap(canvas:HTMLCanvasElement,players:Player[]=[],selfId=''){
     const ctx=canvas.getContext('2d');if(!ctx)return;
     const w=canvas.width,h=canvas.height,me=players.find(p=>p.id===selfId);
