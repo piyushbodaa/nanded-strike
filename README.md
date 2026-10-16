@@ -1,6 +1,6 @@
 # Counter Strike Nanded
 
-**Play:** https://counterstrike.nanded.fun
+**Play:** https://cs.nanded.fun
 
 **Source:** https://github.com/piyushbodaa/nanded-strike
 

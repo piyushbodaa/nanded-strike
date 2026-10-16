@@ -5,7 +5,7 @@ const title = "Counter Strike Nanded";
 const description = "Play Counter Strike Nanded with real people across mapped Bhagya Nagar streets. Join a public match, share a private room, or explore Nanded solo. No bots.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://counterstrike.nanded.fun"),
+  metadataBase: new URL("https://cs.nanded.fun"),
   title,
   applicationName: title,
   description,

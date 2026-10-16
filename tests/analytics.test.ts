@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const source=readFileSync('public/analytics.js','utf8');
-function setup(host='counterstrike.nanded.fun'){
+function setup(host='cs.nanded.fun'){
  const listeners: Record<string, (event: {detail: Record<string, unknown>}) => void> = {};
  const scripts: object[] = [];
  const window: {dataLayer: IArguments[]; addEventListener: (name: string, fn: (event: {detail: Record<string, unknown>}) => void) => void} = {dataLayer: [], addEventListener:(name,fn)=>listeners[name]=fn};
@@ -21,5 +21,8 @@ const config=commands().find(x=>x[0]==='config');
 assert.ok(config);
 assert.equal(config[2].send_page_view,false);
 assert.equal(config[2].allow_google_signals,false);
+assert.equal(config[2].cookie_domain,'cs.nanded.fun');
+assert.equal(config[2].page_location,'https://cs.nanded.fun/');
 assert.equal(setup('localhost').scripts.length,0);assert.equal(setup('preview.vercel.app').scripts.length,0);
+assert.equal(setup('counterstrike.nanded.fun').scripts.length,0);
 console.log('PASS: initialization deduplication, one page view, production hostname gating, field/event allowlists, URL sanitization, advertising disabled.');

@@ -1,6 +1,6 @@
 /* Aggregate game analytics. Never pass player/game state or URL parameters here. */
 (() => {
-  const host = 'counterstrike.nanded.fun';
+  const host = 'cs.nanded.fun';
   const id = 'G-ZJDMT177HT';
   if (location.hostname !== host || window.__nandedAnalyticsInitialized) return;
   window.__nandedAnalyticsInitialized = true;
