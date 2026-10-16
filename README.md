@@ -70,7 +70,7 @@ With a local or deployed server running:
 npm run test:browser
 ```
 
-The browser script defaults to `http://127.0.0.1:5173` and `/usr/bin/chromium`. Override `TEST_URL` (or `BASE_URL`) and `CHROMIUM_PATH` when needed. Use `HEADED=1` to watch. Screenshots are written to `test-results/multiplayer/`.
+The browser script defaults to `http://127.0.0.1:5173` and `/usr/bin/chromium`. Override `TEST_URL` (or `BASE_URL`) and `CHROMIUM_PATH` when needed. Use `HEADED=1` for hardware-rendered interaction checks: a slow software renderer can exceed the 650 ms stale-input deadline. `TEST_SCOPE=screen` runs the private-room rotation and phone-loadout checks on their own. Screenshots are written to `test-results/multiplayer/`.
 
 Browser coverage joins the public match from separate desktop and touch-phone contexts, verifies the same room and human-only player list, separated spawns, authoritative movement in both directions, firing, reload, scoreboard, real simultaneous touch movement/aim/fire, release handling, and reconnect feedback. It also creates a private room at a selected area, joins through an invite in another browser, checks invite copying, and exercises peaceful portrait exploration. Sharp phone canvas resolution and touch-target bounds are checked. Use `HEADED=1` on a desktop with a display for faster native-browser testing; software-rendered headless Chromium can be much slower and is not evidence of real-phone frame rate.
 
