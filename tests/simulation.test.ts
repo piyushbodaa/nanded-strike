@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { addPlayer, advanceMatch, applyInput, createMatch, isWalkable, MATCH_DURATION, movePlayer, removePlayer, sanitizeInput, snapshot, type Input, type Match, type Player } from "../lib/simulation";
 import { COLLIDERS, MAP_BOUNDS, SPAWNS, WAYPOINTS } from "../lib/map";
 const START=1_700_000_000_000;
+// Derive geometry-sensitive fixtures from the current map, preserving the collision assertions.
+const WALL = COLLIDERS.find(c => c.h > 3 && c.w > 5 && c.d > 5 &&
+  isWalkable(c.x,c.z+c.d/2+3) && isWalkable(c.x,c.z-c.d/2-3));
+assert.ok(WALL, "map needs a building with accessible positions on both sides");
 const input=(seq:number,extra:Partial<Input>={}):Input=>({seq,forward:0,strafe:0,yaw:0,pitch:0,shoot:false,reload:false,sprint:false,jump:false,...extra});
 function duel() {
   const match=createMatch(START);const a=addPlayer(match,"A","blue"),b=addPlayer(match,"B","orange");
@@ -14,6 +18,18 @@ function fire(match:Match,a:Player,time:number,seq=0,extra:Partial<Input>={}) {a
 test("spawn slots and waypoints are inside collision-free map space",()=>{
   for(const point of [...SPAWNS.blue,...SPAWNS.orange,...WAYPOINTS])assert.ok(isWalkable(point.x,point.z),`blocked ${JSON.stringify(point)}`);
   assert.ok(COLLIDERS.length>10);
+});
+test("every spawn faces a walkable route into the arena",()=>{
+  const match=createMatch(START);
+  for(const team of ["blue","orange"] as const){
+    const player=match.players.find(p=>p.team===team)!;
+    for(const point of SPAWNS[team]){
+      Object.assign(player,{x:point.x,z:point.z,y:0,vy:0,health:100});
+      for(let frame=0;frame<10;frame++)movePlayer(match,player,input(frame,{forward:1}),.05);
+      assert.ok(Math.hypot(player.x-point.x,player.z-point.z)>=1,`blocked forward spawn ${team} ${JSON.stringify(point)}`);
+      assert.ok(isWalkable(player.x,player.z));
+    }
+  }
 });
 test("six combatants, eight-human cap, balanced four-person teams",()=>{
   const match=createMatch(START);assert.equal(match.players.length,6);assert.ok(match.players.every(p=>p.bot));
@@ -38,10 +54,22 @@ test("server movement is speed-limited, bounded and stops stale controls",()=>{
   const before=a.x;advanceMatch(match,START+100_000);assert.equal(a.x,before);
   Object.assign(a,{x:MAP_BOUNDS.maxX-.4,z:0,yaw:0});movePlayer(match,a,input(1,{strafe:1}),1);assert.ok(a.x<MAP_BOUNDS.maxX);
 });
+test("mobile polling jitter keeps controls active, but abandoned input expires",()=>{
+  const {match,a}=duel();
+  applyInput(match,a.id,input(0,{forward:1}),START);
+  advanceMatch(match,START+300);
+  const after300=a.z;
+  advanceMatch(match,START+500);
+  assert.ok(a.z<after300,"450–500ms mobile gaps should not stop a held control");
+  advanceMatch(match,START+800);
+  const afterExpiry={x:a.x,z:a.z};
+  advanceMatch(match,START+1100);
+  assert.deepEqual({x:a.x,z:a.z},afterExpiry,"abandoned control must expire after650ms");
+});
 test("movement never passes through a building, even while jumping",()=>{
-  const {match,a}=duel();Object.assign(a,{x:16,z:-10,yaw:0});
+  const {match,a}=duel();Object.assign(a,{x:WALL.x,z:WALL.z+WALL.d/2+3,yaw:0});
   for(let i=0;i<100;i++)movePlayer(match,a,input(i,{forward:1,jump:true}),.05);
-  assert.ok(a.z>=-12+.36);assert.ok(isWalkable(a.x,a.z));
+  assert.ok(a.z>=WALL.z+WALL.d/2+.36);assert.ok(isWalkable(a.x,a.z));
 });
 test("raycast damages enemy, records hit and prevents fire-rate abuse",()=>{
   const {match,a,b}=duel();fire(match,a,START);assert.equal(b.health,32);assert.equal(a.ammo,29);
@@ -49,7 +77,7 @@ test("raycast damages enemy, records hit and prevents fire-rate abuse",()=>{
   assert.ok(match.events.some(e=>e.type==="hit"&&e.targetId===b.id&&e.headshot));
 });
 test("wall occlusion stops projectiles",()=>{
-  const {match,a,b}=duel();Object.assign(a,{x:16,z:-9});Object.assign(b,{x:16,z:-28});
+  const {match,a,b}=duel();Object.assign(a,{x:WALL.x,z:WALL.z+WALL.d/2+3});Object.assign(b,{x:WALL.x,z:WALL.z-WALL.d/2-3});
   fire(match,a,START);assert.equal(b.health,100);assert.equal(a.ammo,29);assert.ok(!match.events.some(e=>e.type==="hit"));
 });
 test("friendly fire and spawn shield cause no damage",()=>{

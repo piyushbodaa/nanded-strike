@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BUILDINGS, COVER, UTILITY_POLES, LAMP_POLES, PLANT_POTS } from './map';
+import { BUILDINGS, COVER, COMPOUND_WALLS, UTILITY_POLES, ROADS } from './map';
 
-/** A wholly original, fictional Godavari riverside bazaar. No downloaded assets. */
+/** Bhagya Nagar, Nanded. OSM-derived streets; illustrative architecture. See /map-reference.json. */
 export function createWorld(scene: THREE.Scene) {
   const root = new THREE.Group();
-  root.name = 'Nanded — Godavari Quarter';
+  root.name = 'Bhagya Nagar — Nanded';
   scene.add(root);
-  scene.background = new THREE.Color('#ddc5a7');
-  scene.fog = new THREE.Fog('#ddc5a7', 58, 155);
+  scene.background = new THREE.Color('#cbd5d0');
+  scene.fog = new THREE.Fog('#cbd5d0', 85, 210);
   const resources: { dispose(): void }[] = [];
   const batches = new Map<THREE.Material, THREE.BufferGeometry[]>();
   const materialCache = new Map<string, THREE.MeshStandardMaterial>();
@@ -89,9 +89,6 @@ export function createWorld(scene: THREE.Scene) {
     }
     return m;
   }
-  const sand = mat('#cbb68e', plaster);
-  const stone = mat('#a38f6c', plaster);
-  const trim = mat('#e4caa0', plaster);
   const dark = mat('#303d39');
   const iron = mat('#354d4a', undefined, .65, .25);
   const wood = mat('#d3b17c', woodTexture);
@@ -138,108 +135,6 @@ export function createWorld(scene: THREE.Scene) {
     return { material, aspect };
   }
 
-  // Sunlit dust, long shadows and atmospheric silhouettes give the quarter its evening character.
-  root.add(new THREE.HemisphereLight('#f5e0bd', '#766c51', 2.15));
-  const sun = new THREE.DirectionalLight('#ffdfad', 3.15);
-  sun.position.set(-34, 49, 30); sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 140 });
-  sun.shadow.normalBias = .035; sun.shadow.bias = -.0002;
-  root.add(sun); root.add(sun.target);
-  const skyGeometry = new THREE.SphereGeometry(190, 24, 12);
-  const skyMaterial = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false,
-    uniforms: { top: { value: new THREE.Color('#93b6b4') }, bottom: { value: new THREE.Color('#efd3ad') } },
-    vertexShader: 'varying vec3 vPosition; void main(){vPosition=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-    fragmentShader: 'uniform vec3 top;uniform vec3 bottom;varying vec3 vPosition;void main(){float f=smoothstep(-10.0,125.0,vPosition.y);gl_FragColor=vec4(mix(bottom,top,f),1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}',
-  });
-  root.add(new THREE.Mesh(skyGeometry, skyMaterial)); resources.push(skyGeometry, skyMaterial);
-
-  plane(0, -.055, 0, 64, 64, mat('#ffffff', groundTexture));
-  plane(0, -.035, 0, 62, 11.5, mat('#c8baa0', asphaltTexture));
-  plane(2.9, -.028, 0, 9.7, 61, mat('#c9baa1', asphaltTexture));
-  // Soft sandy shoulders, small drains and faded lane paint.
-  box(0, -.03, 6.1, 60, .06, .45, sand);
-  box(0, -.03, -6.1, 60, .06, .45, sand);
-  for (let z = -27; z < 29; z += 6) plane(2.9, .002, z, .13, 2.3, mat('#d8c89b'));
-  for (let x = -27; x < 29; x += 8) {
-    box(x, .015, -7.1, .9, .04, .55, iron);
-    for (let n = 0; n < 6; n++) box(x - .37 + n * .15, .044, -7.1, .035, .015, .52, dark);
-  }
-
-  for (let index = 0; index < BUILDINGS.length; index++) {
-    const b = BUILDINGS[index];
-    const wall = mat(b.color, plaster);
-    const accent = mat(b.accent, plaster);
-    box(b.x, b.h / 2, b.z, b.w, b.h, b.d, wall);
-    box(b.x, .16, b.z, b.w + .35, .32, b.d + .35, stone);
-    box(b.x, b.h + .15, b.z, b.w + .5, .3, b.d + .5, trim);
-    // Flat roofs and low parapets; water tanks and clothes lines create a local skyline.
-    box(b.x, b.h + .48, b.z - b.d / 2, b.w + .25, .6, .25, wall);
-    box(b.x, b.h + .48, b.z + b.d / 2, b.w + .25, .6, .25, wall);
-    box(b.x - b.w / 2, b.h + .48, b.z, .25, .6, b.d, wall);
-    box(b.x + b.w / 2, b.h + .48, b.z, .25, .6, b.d, wall);
-    box(b.x - b.w * .24, b.h + .24, b.z + 1.5, 2, .25, 2, stone);
-    cylinder(b.x - b.w * .24, b.h + 1.1, b.z + 1.5, .78, .78, 1.5, dark, 12);
-    cylinder(b.x - b.w * .24, b.h + 1.9, b.z + 1.5, .8, .8, .13, dark, 12);
-    for (let k = 0; k < 3; k++) cylinder(b.x - b.w * .24, b.h + .6 + k * .42, b.z + 1.5, .795, .795, .05, iron, 12);
-    cylinder(b.x + b.w * .28, b.h + 1.7, b.z - 1, .035, .04, 3.1, iron, 6);
-    box(b.x + b.w * .28, b.h + 2.9, b.z - 1, 1.4, .04, .04, iron);
-    box(b.x + b.w * .28, b.h + 2.45, b.z - 1, .8, .04, .04, iron);
-
-    const facing = b.z > 8 ? -1 : 1;
-    const faceZ = b.z + facing * (b.d / 2 + .025);
-    const width = b.w > 10 ? 3.1 : 2.1;
-    const count = Math.max(1, Math.floor(b.w / 4));
-    for (let j = 0; j < count; j++) {
-      const x = b.x + (j - (count - 1) / 2) * (b.w / count);
-      box(x, 1.55, faceZ, width + .25, 3.1, .13, trim);
-      box(x, 1.48, faceZ + facing * .08, width, 2.85, .13, accent);
-      for (let k = 0; k < 17; k++) box(x, .18 + k * .16, faceZ + facing * .15, width, .025, .04, iron);
-      box(x, .5, faceZ + facing * .19, .32, .05, .05, offWhite);
-      // Upper residential windows are inset dark shutters, with simple iron railings.
-      for (let floor = 4.8; floor < b.h - .5; floor += 2.8) {
-        box(x, floor, faceZ, 1.55, 1.8, .16, trim);
-        box(x, floor, faceZ + facing * .09, 1.3, 1.55, .16, dark);
-        box(x, floor, faceZ + facing * .2, .065, 1.55, .06, accent);
-        box(x, floor, faceZ + facing * .2, 1.3, .07, .06, accent);
-        box(x, floor - 1, faceZ + facing * .2, 1.8, .15, .6, trim);
-        if (j % 2 === 0) {
-          box(x, floor - .55, faceZ + facing * .48, 1.75, .07, .045, iron);
-          for (let n = 0; n < 6; n++) box(x - .76 + n * .3, floor - .75, faceZ + facing * .48, .035, .45, .035, iron);
-        }
-      }
-    }
-    const sign = label(b.name, b.label, b.accent);
-    plane(b.x, 3.65, faceZ + facing * .23, Math.min(b.w - .6, 10.8), 1.05, sign.material, 0, facing === 1 ? 0 : Math.PI);
-    box(b.x, 4.24, faceZ, b.w + .35, .15, .55, trim);
-    // Striped bazaar canvas awnings stay above head height and inside the facade cover line.
-    const awningWidth = b.w - .3;
-    const stripeCount = Math.ceil(awningWidth / .7);
-    for (let j = 0; j < stripeCount; j++) {
-      const x = b.x - awningWidth / 2 + (j + .5) * awningWidth / stripeCount;
-      add(new THREE.BoxGeometry(awningWidth / stripeCount, .055, 1.65), j % 2 ? offWhite : accent,
-        x, 2.96, faceZ + facing * .72, facing * .13);
-      box(x, 2.72, faceZ + facing * 1.48, awningWidth / stripeCount, .25, .055, j % 2 ? offWhite : accent);
-    }
-    for (const side of [-1, 1]) {
-      // Side windows make every angle feel finished.
-      for (let k = 0; k < Math.floor(b.d / 3); k++) {
-        const z = b.z + (k - (Math.floor(b.d / 3) - 1) / 2) * 3;
-        box(b.x + side * (b.w / 2 + .035), 5.2, z, .1, 1.6, 1.25, trim);
-        box(b.x + side * (b.w / 2 + .1), 5.2, z, .08, 1.35, 1.02, accent);
-        box(b.x + side * (b.w / 2 + .145), 5.2, z, .04, .06, 1.02, dark);
-      }
-    }
-    // Sun-faded plaster repair patches and the external downpipe.
-    box(b.x + b.w * .4, 1.2, faceZ + facing * .02, .75, 1.7, .08, mat('#bd9a74', plaster));
-    cylinder(b.x - b.w / 2 + .25, b.h / 2, faceZ + facing * .19, .055, .055, b.h, iron, 6);
-    if (index % 2 === 0) {
-      box(b.x + b.w * .27, 5, faceZ + facing * .32, 1.35, .7, .5, mat('#ccc7ae'));
-      for (let k = 0; k < 5; k++) box(b.x + b.w * .27, 4.78 + k * .105, faceZ + facing * .6, 1.1, .025, .02, iron);
-    }
-  }
-
   function crate(x: number, z: number, w: number, h: number, d: number, y = 0) {
     box(x, y + h / 2, z, w, h, d, wood);
     for (const side of [-1, 1]) {
@@ -251,12 +146,6 @@ export function createWorld(scene: THREE.Scene) {
     }
     for (const side of [-1, 1]) box(x + side * w * .28, y + h + .03, z, .1, .05, d, oldWood);
   }
-  function barrel(x: number, z: number, h: number, r: number, color: THREE.Material) {
-    cylinder(x, h / 2, z, r * .94, r, h, color, 12);
-    for (const p of [.08, .28, .74, .96]) cylinder(x, h * p, z, r + .015, r + .015, .045, iron, 12);
-    cylinder(x, h + .012, z, r * .9, r * .9, .025, iron, 12);
-    cylinder(x + .18, h + .035, z, .07, .07, .03, dark, 8);
-  }
   function tree(x: number, z: number, size = 1, baseY = 0) {
     cylinder(x, baseY + 1.9 * size, z, .14 * size, .25 * size, 3.8 * size, mat('#7b6546'), 7);
     cylinder(x + .38 * size, baseY + 3 * size, z, .065 * size, .12 * size, 1.7 * size, mat('#7b6546'), 6, -.5);
@@ -267,150 +156,93 @@ export function createWorld(scene: THREE.Scene) {
       add(geometry, foliage[j % foliage.length], x + Math.cos(angle) * r, baseY + (4 + rand() * .65) * size, z + Math.sin(angle) * r);
     }
   }
-  for (const c of COVER) {
-    if (c.kind === 'crate') {
-      if (c.h > 2) {
-        crate(c.x, c.z, c.w, c.h * .53, c.d);
-        crate(c.x - .15, c.z + .1, c.w * .65, c.h * .47, c.d * .8, c.h * .53);
-      } else crate(c.x, c.z, c.w, c.h, c.d);
-    } else if (c.kind === 'barrels') {
-      for (let n = 0; n < 3; n++) barrel(c.x + (n - 1) * .98, c.z, c.h, .46, n % 2 ? orange : mat('#687e72'));
-    } else if (c.kind === 'planter') {
-      box(c.x, .5, c.z, c.w, 1, c.d, trim);
-      box(c.x, 1.015, c.z, c.w - .22, .04, c.d - .22, mat('#635a3b'));
-      tree(c.x, c.z, .9, .95);
+  root.add(new THREE.HemisphereLight('#e7f0ef','#7a806a',2));
+  const sun=new THREE.DirectionalLight('#fff0d4',2.8);sun.position.set(-44,68,35);sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-80,right:80,top:80,bottom:-80,near:1,far:190});sun.shadow.normalBias=.035;sun.shadow.bias=-.0002;root.add(sun);root.add(sun.target);
+  const skyGeometry=new THREE.SphereGeometry(250,24,12);
+  const skyMaterial=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{top:{value:new THREE.Color('#87b7ce')},bottom:{value:new THREE.Color('#e3e1cd')}},vertexShader:'varying vec3 p;void main(){p=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'uniform vec3 top;uniform vec3 bottom;varying vec3 p;void main(){gl_FragColor=vec4(mix(bottom,top,smoothstep(-5.,140.,p.y)),1.);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}'});
+  root.add(new THREE.Mesh(skyGeometry,skyMaterial));resources.push(skyGeometry,skyMaterial);
+  plane(0,-.055,0,190,190,mat('#b5b6a5',groundTexture));
+  const roadMat=mat('#a4a6a0',asphaltTexture),shoulder=mat('#bab9a8',plaster),concrete=mat('#d3d3c6',plaster),paint=mat('#e3dfc6');
+  // Exact geodetic OSM centerlines; widths are an illustrative road-design assumption.
+  for(const road of ROADS)for(let i=1;i<road.points.length;i++) {
+    const a=road.points[i-1],b=road.points[i],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz),angle=Math.atan2(dx,dz);
+    box((a.x+b.x)/2,-.025,(a.z+b.z)/2,road.width+2,.05,len+1,shoulder,angle);
+    box((a.x+b.x)/2,.005,(a.z+b.z)/2,road.width,.035,len+.15,roadMat,angle);
+    if(road.kind==='main')for(let d=2;d<len;d+=7){const t=d/len;box(a.x+dx*t,.03,a.z+dz*t,.11,.018,2.8,paint,angle);}
+  }
+  for(const b of BUILDINGS) {
+    const wall=mat(b.color,plaster),accent=mat(b.accent),face=b.z+b.front*(b.d/2+.03);
+    box(b.x,b.h/2,b.z,b.w,b.h,b.d,wall);
+    box(b.x,.12,b.z,b.w+.3,.24,b.d+.3,concrete);
+    for(let y=3.1;y<b.h;y+=3.1)box(b.x,y,b.z,b.w+.22,.18,b.d+.22,concrete);
+    box(b.x,b.h+.12,b.z,b.w+.4,.24,b.d+.4,concrete);
+    for(const side of [-1,1]){box(b.x,b.h+.5,b.z+side*b.d/2,b.w,.75,.22,wall);box(b.x+side*b.w/2,b.h+.5,b.z,.22,.75,b.d,wall);}
+    // Narrow residential windows, boxed balconies, domestic tanks and solar hot-water panels.
+    for(let y=1.65;y<b.h-1;y+=3.1)for(const xoff of [-b.w*.3,0,b.w*.3]) {
+      box(b.x+xoff,y,face,1.55,1.65,.12,concrete);box(b.x+xoff,y,face+b.front*.08,1.32,1.42,.12,mat('#405c62',undefined,.4,.1));
+      box(b.x+xoff,y,face+b.front*.17,.07,1.4,.05,offWhite);
+      box(b.x+xoff,y,face+b.front*.17,1.3,.06,.05,offWhite);
+      if(y>3){box(b.x+xoff,y-.95,face+b.front*.3,2.1,.15,.85,concrete);box(b.x+xoff,y-.65,face+b.front*.67,2.05,.06,.05,iron);for(let j=0;j<7;j++)box(b.x+xoff-.9+j*.3,y-.79,face+b.front*.67,.035,.3,.035,iron);}
+    }
+    for(const side of [-1,1])for(let y=1.6;y<b.h-1;y+=3.1)for(const zoff of [-2.8,2.8]){box(b.x+side*(b.w/2+.03),y,b.z+zoff,.12,1.6,1.45,concrete);box(b.x+side*(b.w/2+.11),y,b.z+zoff,.08,1.35,1.2,accent);}
+    if(b.kind==='shop') {
+      for(const dx of [-2.6,2.6]){box(b.x+dx,1.4,face+b.front*.1,4.2,2.7,.15,accent);for(let y=.2;y<2.7;y+=.17)box(b.x+dx,y,face+b.front*.19,4.2,.025,.025,iron);}
+      const sign=label(b.name,b.label,b.accent);plane(b.x,3.15,face+b.front*.23,b.w-.2,.85,sign.material,0,b.front===1?0:Math.PI);
+      box(b.x,2.68,face+b.front*.65,b.w,.12,1.5,concrete);
     } else {
-      // A parked, unbranded black-and-yellow auto rickshaw doubles as street cover.
-      const rubber = mat('#252e2a'); const yellow = mat('#d6a33f');
-      box(c.x, .68, c.z, 3.7, .5, 1.8, yellow);
-      box(c.x + .75, 1.25, c.z, 1.8, .8, 1.75, mat('#66785e'));
-      box(c.x + .55, 2.13, c.z, 2.65, .35, 1.9, rubber);
-      box(c.x - 1.25, 1.07, c.z, .7, 1.05, 1.72, yellow);
-      box(c.x - 1.25, 1.8, c.z, .07, .62, 1.7, mat('#8ba6a0', undefined, .3, .15));
-      for (const side of [-1, 1]) {
-        box(c.x - .8, 1.7, c.z + side * .85, .07, 1.05, .07, rubber);
-        box(c.x + 1.7, 1.65, c.z + side * .85, .08, 1.1, .08, rubber);
-        box(c.x + .7, 1.6, c.z + side * .85, .08, 1.1, .08, rubber);
-        add(new THREE.CylinderGeometry(.4, .4, .2, 12), rubber, c.x + 1.1, .43, c.z + side * .9, Math.PI / 2);
-        add(new THREE.CylinderGeometry(.21, .21, .22, 10), iron, c.x + 1.1, .43, c.z + side * .9, Math.PI / 2);
-        box(c.x - 1.64, 1, c.z + side * .55, .07, .2, .28, offWhite);
-      }
-      add(new THREE.CylinderGeometry(.4, .4, .23, 12), rubber, c.x - 1.35, .43, c.z, Math.PI / 2);
-      box(c.x + .7, 1.25, c.z, 1.35, .2, 1.55, rubber);
+      box(b.x,.95,face+b.front*.1,1.25,1.9,.18,mat('#665b4e'));
+      box(b.x,b.h*.5,face+b.front*.1,.22,b.h, .25,accent);
+    }
+    cylinder(b.x-2,b.h+.85,b.z+1,.7,.7,1.5,dark,12);cylinder(b.x-2,b.h+1.63,b.z+1,.72,.72,.1,dark,12);
+    for(let j=0;j<3;j++)cylinder(b.x-2,b.h+.3+j*.47,b.z+1,.715,.715,.04,iron,12);
+    if(b.kind==='home') {
+      add(new THREE.BoxGeometry(2.8,.1,1.5),mat('#496e7b',undefined,.3,.1),b.x+2,b.h+.48,b.z-.5,-.3);
+      cylinder(b.x+2,b.h+.8,b.z+.25,.24,.24,2.3,concrete,10,Math.PI/2);
+    }
+    box(b.x+b.w*.35,4.6,face+b.front*.35,1.2,.65,.55,mat('#babdb2'));
+    for(let j=0;j<5;j++)box(b.x+b.w*.35,4.4+j*.1,face+b.front*.65,1,.025,.025,iron);
+    cylinder(b.x-b.w*.44,b.h/2,face+b.front*.16,.04,.04,b.h,mat('#999f92'),6);
+  }
+  for(const c of COMPOUND_WALLS){box(c.x,c.h/2,c.z,c.w,c.h,c.d,concrete);box(c.x,c.h+.04,c.z,c.w+.06,.08,c.d+.06,mat('#9aaca1'));}
+  for(const b of BUILDINGS.filter(b=>b.kind==='home')){
+    for(const s of [-1,1])box(b.x+s*1.8,.85,b.z+b.front*6.8,.3,1.7,.4,concrete);
+    // Gate opening stays traversable; side garden greenery sits inside the compound.
+    tree(b.x+5.4,b.z-5.4,.65);
+  }
+  const tire=mat('#242e2d'),glass=mat('#6d8f98',undefined,.25,.15);
+  for(const c of COVER){
+    if(c.kind==='crate'){crate(c.x,c.z,c.w,c.h,c.d);continue;}
+    if(c.kind==='planter'){box(c.x,.45,c.z,c.w,.9,c.d,concrete);box(c.x,.92,c.z,c.w-.2,.04,c.d-.2,mat('#706f4d'));tree(c.x,c.z,.9,.9);continue;}
+    if(c.kind==='barrier'){box(c.x,.55,c.z,c.w,1.1,c.d,concrete);for(let x=-c.w/2+.25;x<c.w/2;x+=.6)box(c.x+x,.6,c.z+c.d/2+.01,.25,.55,.025,orange);continue;}
+    if(c.kind==='car'){
+      const body=mat(c.x>40?'#e0dfd1':'#80989c',undefined,.45,.2);
+      box(c.x,.63,c.z,2.05,.65,4.3,body);box(c.x,1.15,c.z-.1,1.8,.7,2.3,glass);box(c.x,1.55,c.z-.1,1.85,.15,2.35,body);
+      for(const side of [-1,1]){for(const end of [-1,1]){add(new THREE.CylinderGeometry(.36,.36,.22,12),tire,c.x+side*1.02,.38,c.z+end*1.3,0,0,Math.PI/2);box(c.x+side*.7,.75,c.z+end*2.16,.45,.18,.05,end===1?offWhite:orange);}box(c.x+side*.9,1.15,c.z,.08,.85,.1,body);}
+    }else if(c.kind==='cart'){
+      const yellow=mat('#dfb23f');box(c.x,.68,c.z,3.7,.5,1.8,yellow);box(c.x+.75,1.25,c.z,1.8,.8,1.75,mat('#53766c'));box(c.x+.55,2.13,c.z,2.65,.35,1.9,tire);box(c.x-1.25,1.07,c.z,.7,1.05,1.72,yellow);box(c.x-1.25,1.8,c.z,.07,.62,1.7,glass);
+      for(const side of [-1,1]){box(c.x-.8,1.7,c.z+side*.85,.07,1.05,.07,tire);box(c.x+1.7,1.65,c.z+side*.85,.08,1.1,.08,tire);add(new THREE.CylinderGeometry(.4,.4,.2,12),tire,c.x+1.1,.43,c.z+side*.9,Math.PI/2);box(c.x-1.64,1,c.z+side*.55,.07,.2,.28,offWhite);}
+      add(new THREE.CylinderGeometry(.4,.4,.23,12),tire,c.x-1.35,.43,c.z,Math.PI/2);
     }
   }
-
-  // Electricity lines frame the main lane, leaving clear sightlines at player height.
-  for (const { x, z } of UTILITY_POLES) {
-    cylinder(x, 4.75, z, .11, .15, 9.5, mat('#756f58'), 8);
-    box(x, 8.7, z, 1.8, .12, .12, iron);
-    for (const dx of [-.6, .6]) cylinder(x + dx, 8.9, z, .09, .09, .23, offWhite, 6);
-    wire([new THREE.Vector3(x, 9, z), new THREE.Vector3(x - 3, 7.4, z + 9.8), new THREE.Vector3(x, 8.7, z + 19.6)]);
+  for(const {x,z} of UTILITY_POLES){cylinder(x,4.25,z,.11,.15,8.5,mat('#83877e'),8);box(x,7.75,z,1.9,.12,.12,iron);for(const dx of [-.65,0,.65])cylinder(x+dx,7.95,z,.07,.07,.25,offWhite,6);}
+  for(let i=1;i<UTILITY_POLES.length;i++){const a=UTILITY_POLES[i-1],b=UTILITY_POLES[i];if(Math.hypot(a.x-b.x,a.z-b.z)>50)continue;for(const dx of [-.5,.5])wire([new THREE.Vector3(a.x+dx,8,a.z),new THREE.Vector3((a.x+b.x)/2+dx,6.5,(a.z+b.z)/2),new THREE.Vector3(b.x+dx,8,b.z)],.024);}
+  const district=label('भाग्यनगर','BHAGYA NAGAR  ·  NANDED','#36636c');
+  plane(-6,2.8,9,4.1,1.05,district.material,0,0);box(-8.1,1.8,9,.1,3.4,.1,iron);box(-3.9,1.8,9,.1,3.4,.1,iron);
+  // A readable neighborhood sign marks the mapped entrance; no invented monument is claimed.
+  const roadSign=label('भाग्यनगर रोड','BHAGYA NAGAR ROAD','#355e68');plane(-29,2.8,-10,4.1,.9,roadSign.material,0,0);box(-29,1.4,-10,.12,2.8,.12,iron);
+  // Continued residential fabric frames every arena edge, without inventing water or ghats.
+  for(let i=0;i<26;i++){
+    const side=i%4,t=-83+Math.floor(i/4)*26,x=side===0?-77:side===1?77:t,z=side===2?-77:side===3?77:t,h=6+(i%4)*3;
+    box(x,h/2,z,13,h,13,mat(['#bccac4','#d3d4c7','#c5c0b2','#c9d3d1'][i%4],plaster));box(x,h+.1,z,13.4,.2,13.4,concrete);
+    for(let y=2;y<h;y+=3)for(const dx of [-4,0,4])box(x+dx,y,z+6.55,1.4,1.5,.1,glass);
+    if(i%3===0)tree(x+9,z+2,1.5);
   }
-  for (const y of [8.9, 8.65]) wire([new THREE.Vector3(-21.5, y, -8.8), new THREE.Vector3(0, y - 2.3, -7.4), new THREE.Vector3(21.5, y, -8.8)]);
-  // Faded bunting across the market; tiny geometric pennants stay inexpensive.
-  wire([new THREE.Vector3(-16, 6.5, 11.8), new THREE.Vector3(-2, 5.8, 10.9), new THREE.Vector3(12, 6.4, 13.1)], .018);
-  for (let i = 0; i < 22; i++) {
-    const t = i / 21; const x = -16 + 28 * t; const y = 6.5 - .7 * Math.sin(Math.PI * t);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute([-.24, 0, 0, .24, 0, 0, 0, -.55, .04], 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, .5, 0], 2)); g.computeVertexNormals();
-    const flag = [orange, offWhite, mat('#608879')][i % 3]; flag.side = THREE.DoubleSide;
-    add(g, flag, x, y, 11.8 + t * 1.3);
-  }
-
-  // The playable precinct overlooks the Godavari. Steps and water lie beyond its edge.
-  box(32.1, -.7, 0, 3.8, 1.2, 78, stone);
-  for (let n = 0; n < 7; n++) box(34 + n * 1.05, -1.15 - n * .23, 0, 1.13, .4, 95, n % 2 ? sand : trim);
-  box(31.75, .48, 0, .45, .96, 62, trim);
-  for (let z = -30; z <= 30; z += 5) box(31.75, .68, z, .75, 1.36, .75, sand);
-  const waterUniforms = { time: { value: 0 }, deep: { value: new THREE.Color('#416e6a') }, light: { value: new THREE.Color('#9ba68a') } };
-  const waterMaterial = new THREE.ShaderMaterial({
-    uniforms: waterUniforms, transparent: false, side: THREE.DoubleSide,
-    vertexShader: 'varying vec3 wp;void main(){wp=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: 'uniform float time;uniform vec3 deep;uniform vec3 light;varying vec3 wp;void main(){float a=sin(wp.x*1.4+wp.z*.32+time*.5)*sin(wp.z*3.2-wp.x*.6-time*.7);float b=pow(max(0.,sin(wp.z*7.+wp.x*1.7-time*.8)),18.)*.16;float haze=clamp(abs(wp.z)/180.,0.,.5);vec3 c=mix(deep,light,a*.12+.25+b+haze);gl_FragColor=vec4(c,1.);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}',
-  });
-  const waterGeometry = new THREE.PlaneGeometry(160, 280);
-  const water = new THREE.Mesh(waterGeometry, waterMaterial); water.rotation.x = -Math.PI / 2; water.position.set(119, -2.65, -5);
-  root.add(water); resources.push(waterGeometry, waterMaterial);
-  // Far bank and discreet trees beyond the river.
-  box(114, -2.45, -9, 10, .4, 250, sand);
-  for (let z = -95; z < 95; z += 9) tree(112 + rand() * 5, z, 1.4 + rand() * .5, -2.2);
-
-  // Boundary architecture and distant everyday city buildings.
-  for (const x of [-32.2]) box(x, 1.45, 0, .8, 2.9, 65, mat('#ad9471', plaster));
-  box(0, 1.4, -31.1, 65, 2.8, .7, mat('#ba9d77', plaster));
-  box(0, .62, 31.4, 65, 1.24, .7, sand);
-  for (let i = 0; i < 18; i++) {
-    const x = -60 + i * 7.6; const z = -40 - rand() * 13;
-    const h = 5 + rand() * 11; const w = 5 + rand() * 5;
-    const color = ['#c2aa8b', '#d4b68c', '#b9aa91', '#bb9879'][i % 4];
-    box(x, h / 2, z, w, h, 9, mat(color, plaster));
-    box(x, h + .1, z, w + .3, .25, 9.2, trim);
-    for (let floor = 3; floor < h; floor += 2.7) for (let n = -1; n <= 1; n++) box(x + n * 1.8, floor, z + 4.55, .8, 1.25, .1, mat('#777e70'));
-    if (i % 3 === 0) cylinder(x, h + .6, z, .7, .7, 1.2, dark, 8);
-  }
-  for (let i = 0; i < 5; i++) tree(-36 - rand() * 2, -21 + i * 12, 1.3 + rand() * .3);
-  for (let i = 0; i < 7; i++) tree(36, -40 - i * 7, 1.15, -.6);
-
-  // Gate signage and route markers give the fictional map its own identity.
-  const district = label('गोदावरी बाजार', 'GODAVARI QUARTER  ·  NANDED', '#324e4b');
-  plane(9, 2.05, -30.68, 8.2, 1.6, district.material, 0, 0);
-  const blueMark = label('A  ←', 'WEST BAZAAR', '#3b6b70', '#eee1b8');
-  plane(-24.38, 1.75, -.9, 2, .8, blueMark.material, 0, Math.PI / 2);
-  const orangeMark = label('B  →', 'RIVER WALK', '#ab603a', '#eee1b8');
-  plane(24.53, 2, -17, 2, .8, orangeMark.material, 0, Math.PI / 2);
-
-  // Lamp posts on the promenade; pale warm glass is readable without expensive point lights.
-  const lampGlass = new THREE.MeshStandardMaterial({ color: '#f9dda3', emissive: '#ffc66e', emissiveIntensity: .55, roughness: .45 }); resources.push(lampGlass);
-  for (const { x, z } of LAMP_POLES) {
-    cylinder(x, 2.6, z, .055, .1, 5.2, iron, 8);
-    wire([new THREE.Vector3(x, 5, z), new THREE.Vector3(x - .3, 5.5, z), new THREE.Vector3(x - 1, 5.3, z)], .055, iron);
-    box(x - .95, 5.15, z, .75, .13, .35, iron); box(x - .95, 5.07, z, .64, .035, .27, lampGlass);
-  }
-
-  // Leaf litter, paper, road scuffs and pots supply scale at ground level.
-  for (let i = 0; i < 65; i++) {
-    const x = -28 + rand() * 56; const z = -11 + rand() * 22;
-    plane(x, .012, z, .08 + rand() * .2, .1 + rand() * .22, i % 4 ? mat('#a0926f') : offWhite, -Math.PI / 2, rand() * 6);
-  }
-  for (const { x, z } of PLANT_POTS) {
-    cylinder(x, .3, z, .31, .2, .6, mat('#ae6746'), 8);
-    for (let i = 0; i < 3; i++) add(new THREE.ConeGeometry(.2, .6, 5), foliage[i], x + (rand() - .5) * .2, .77, z + (rand() - .5) * .2);
-  }
-
-  // Batch all stationary objects by material: a few dozen draw calls, even with rich facades.
-  for (const [material, geometries] of batches) {
-    const merged = mergeGeometries(geometries, false);
-    for (const geometry of geometries) geometry.dispose();
-    if (!merged) continue;
-    merged.computeBoundingSphere();
-    const mesh = new THREE.Mesh(merged, material); mesh.castShadow = true; mesh.receiveShadow = true;
-    root.add(mesh); resources.push(merged);
-  }
-  batches.clear();
-
-  const birds = new THREE.Group();
-  const birdMaterial = new THREE.MeshBasicMaterial({ color: '#626958', side: THREE.DoubleSide }); resources.push(birdMaterial);
-  for (let i = 0; i < 6; i++) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute([-.4, .04, .12, 0, 0, 0, -.17, .02, -.06, 0, 0, 0, .4, .04, .12, .17, .02, -.06], 3));
-    const bird = new THREE.Mesh(g, birdMaterial); bird.position.set((i % 3) * 2, (i % 2) * 1.5, i * 1.5); birds.add(bird); resources.push(g);
-  }
-  birds.position.set(15, 23, -13); root.add(birds);
-
-  return {
-    /** Time in seconds. Water and a distant flock are the only moving environment objects. */
-    update(time: number) {
-      waterUniforms.time.value = time;
-      birds.position.set(10 + Math.cos(time * .035) * 29, 24 + Math.sin(time * .13), -16 + Math.sin(time * .035) * 18);
-      birds.rotation.y = -time * .035;
-      birds.children.forEach((bird, i) => { bird.rotation.z = Math.sin(time * 3 + i) * .09; });
-    },
-    dispose() {
-      scene.remove(root);
-      for (const resource of resources) resource.dispose();
-      sun.shadow.dispose();
-    },
-  };
+  // Boundary is explicit through simple low peripheral walls and open street approaches.
+  for(const side of [-1,1]){box(side*61.2,.6,0,.5,1.2,123,concrete);box(0,.6,side*61.2,123,1.2,.5,concrete);}
+  for(let i=0;i<70;i++){const x=-58+rand()*116,z=-58+rand()*116;plane(x,.04,z,.07+rand()*.12,.1+rand()*.2,mat('#9d9a82'),-Math.PI/2,rand()*6);}
+  for(const [material,geometries]of batches){const merged=mergeGeometries(geometries,false);for(const g of geometries)g.dispose();if(!merged)continue;merged.computeBoundingSphere();const mesh=new THREE.Mesh(merged,material);mesh.castShadow=true;mesh.receiveShadow=true;root.add(mesh);resources.push(merged);}batches.clear();
+  const birds=new THREE.Group();const birdMat=new THREE.MeshBasicMaterial({color:'#617067',side:THREE.DoubleSide});resources.push(birdMat);
+  for(let i=0;i<5;i++){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute([-.4,.04,.12,0,0,0,-.17,.02,-.06,0,0,0,.4,.04,.12,.17,.02,-.06],3));const b=new THREE.Mesh(g,birdMat);b.position.set((i%3)*2,i%2,i*1.5);birds.add(b);resources.push(g);}root.add(birds);
+  return{update(time:number){birds.position.set(15+Math.cos(time*.035)*30,28+Math.sin(time*.13),-10+Math.sin(time*.035)*22);birds.rotation.y=-time*.035;},dispose(){scene.remove(root);for(const r of resources)r.dispose();sun.shadow.dispose();}};
 }

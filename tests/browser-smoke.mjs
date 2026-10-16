@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { chromium, expect } from '@playwright/test';
 
 // Run against an already-started app: npm run dev, then npm run test:browser.
-const baseURL = process.env.TEST_URL || 'http://127.0.0.1:5173';
+const baseURL = process.env.TEST_URL || process.env.BASE_URL || 'http://127.0.0.1:5173';
 const artifacts = resolve(process.env.TEST_ARTIFACTS || 'test-results/browser');
 const executablePath = process.env.CHROMIUM_PATH || '/usr/bin/chromium';
 await mkdir(artifacts, { recursive: true });
@@ -17,8 +17,9 @@ const errors = [];
 const networkErrors = [];
 const contexts = [];
 
-async function createPage(name, viewport = { width: 1440, height: 900 }) {
-  const context = await browser.newContext({ viewport, baseURL });
+async function createPage(name, viewport = { width: 1440, height: 900 }, { path = '/', touch = false, lowGraphics = false } = {}) {
+  const context = await browser.newContext({ viewport, baseURL, hasTouch: touch, isMobile: touch, deviceScaleFactor: 1 });
+  if (lowGraphics) await context.addInitScript(() => localStorage.setItem('nanded-settings', JSON.stringify({ sensitivity: 1, volume: 0, quality: 'low' })));
   contexts.push(context);
   const page = await context.newPage();
   page.on('pageerror', (error) => errors.push(`${name}: ${error.message}`));
@@ -27,7 +28,7 @@ async function createPage(name, viewport = { width: 1440, height: 900 }) {
       networkErrors.push(`${name}: ${response.status()} ${response.url()}`);
     }
   });
-  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.goto(path, { waitUntil: 'networkidle' });
   return page;
 }
 
@@ -57,6 +58,19 @@ async function pressFor(page, key, ms) {
   await page.keyboard.down(key);
   await page.waitForTimeout(ms);
   await page.keyboard.up(key);
+}
+
+async function touchHold(page, locator, ms) {
+  const box = await locator.boundingBox();
+  assert.ok(box, 'Touch control has a visible hit target');
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 }] });
+    await page.waitForTimeout(ms);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await session.detach();
+  }
 }
 
 function distance(a, b) {
@@ -169,12 +183,10 @@ try {
   await page.getByTestId('create-room').click();
   await waitForDebug(page, (state) => state?.mode === 'online' && /^[A-HJ-NP-Z2-9]{6}$/.test(state.roomCode), 'Host creates an online room');
   const hostState = await debug(page);
-  const guest = await createPage('guest');
-  await guest.getByRole('button', { name: 'PLAY WITH FRIENDS', exact: true }).click();
-  await guest.getByTestId('player-name').fill('QA GUEST');
-  await guest.getByRole('button', { name: 'JOIN ROOM', exact: true }).click();
-  await guest.getByTestId('room-code-input').fill(hostState.roomCode);
-  await guest.getByTestId('join-room').click();
+  const guest = await createPage('phone-guest', { width: 390, height: 844 }, { path: `/?room=${hostState.roomCode}`, touch: true, lowGraphics: true });
+  await expect(guest.getByTestId('room-code-input')).toHaveValue(hostState.roomCode);
+  await guest.getByTestId('player-name').fill('QA PHONE');
+  await guest.getByTestId('join-room').tap();
   await waitForDebug(guest, (state) => state?.mode === 'online' && state.roomCode === hostState.roomCode, 'Independent client joins the host room');
   const guestState = await debug(guest);
   await waitForDebug(page, (state) => state.players.some((p) => p.id === guestState.playerId), 'Host receives joined guest');
@@ -197,20 +209,52 @@ try {
   await page.mouse.up();
   await waitForDebug(page, (state) => state.ammo < onlineAmmo, 'A quick online click reaches the server');
   await screenshot(page, 'multiplayer');
+  await page.keyboard.press('Escape');
   await guest.bringToFront();
-  if (!(await guest.getByTestId('pause-menu').isVisible())) await guest.keyboard.press('Escape');
-  await guest.getByTestId('leave-game').click();
+  if (await guest.getByTestId('resume-game').isVisible()) await guest.getByTestId('resume-game').tap();
+  await waitForDebug(guest, (state) => state.phase === 'playing' && state.health > 0, 'Phone enters the shared arena');
+  const phoneStart = (await debug(guest)).localPlayer;
+  await touchHold(guest, guest.getByRole('button', { name: 'Move ↑', exact: true }), 900);
+  await waitForDebug(guest, (state) => distance(state.localPlayer, phoneStart) > 0.2, 'Phone touch movement reaches the server');
+  await guest.waitForTimeout(600);
+  const phoneEnd = (await debug(guest)).localPlayer;
+  await waitForDebug(page, (state) => {
+    const remote = state.players.find((p) => p.id === guestState.playerId);
+    return remote && distance(remote, phoneEnd) < 0.75 && distance(remote, phoneStart) > 0.2;
+  }, 'Desktop receives authoritative phone movement');
+  const phoneAmmo = (await debug(guest)).ammo;
+  await touchHold(guest, guest.getByRole('button', { name: 'Fire weapon', exact: true }), 20);
+  await waitForDebug(guest, (state) => state.ammo < phoneAmmo, 'A quick phone tap fires in the shared room');
+  await screenshot(guest, 'mobile-multiplayer');
+  await guest.getByRole('button', { name: 'Pause game', exact: true }).tap();
+  await guest.getByTestId('leave-game').tap();
   await expect(guest.getByTestId('lobby')).toBeVisible();
   await waitForDebug(page, (state) => !state.players.some((p) => p.id === guestState.playerId), 'Host receives guest departure');
   await page.bringToFront();
   if (!(await page.getByTestId('pause-menu').isVisible())) await page.keyboard.press('Escape');
   await page.getByTestId('leave-game').click();
-  console.log('PASS: two independent browser contexts create/join, share positions, leave');
+  assert.ok(await guest.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Phone lobby has no horizontal overflow');
+  await screenshot(guest, 'mobile-lobby');
+  await page.context().close();
+  await guest.context().close();
+  console.log('PASS: desktop and touch phone join by invite link, share movement in both directions, fire, leave');
 
-  const mobile = await createPage('mobile-layout', { width: 390, height: 844 });
-  await expect(mobile.getByTestId('lobby')).toBeVisible();
-  assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Mobile lobby has no horizontal overflow');
-  await screenshot(mobile, 'mobile-lobby');
+  const tablet = await createPage('touch-tablet', { width: 1024, height: 768 }, { touch: true, lowGraphics: true });
+  await tablet.getByTestId('start-solo').tap();
+  await waitForDebug(tablet, (state) => state.phase === 'playing', 'Tablet enters arena without pointer lock');
+  await expect(tablet.getByRole('button', { name: 'Move ↑', exact: true })).toBeVisible();
+  const tabletStart = (await debug(tablet)).localPlayer;
+  await touchHold(tablet, tablet.getByRole('button', { name: 'Move ↑', exact: true }), 600);
+  await waitForDebug(tablet, (state) => distance(state.localPlayer, tabletStart) > 0.2, 'Tablet touch controls move the player');
+  const tabletAmmo = (await debug(tablet)).ammo;
+  await touchHold(tablet, tablet.getByRole('button', { name: 'Fire weapon', exact: true }), 200);
+  await waitForDebug(tablet, (state) => state.ammo < tabletAmmo, 'Tablet touch fire consumes rounds');
+  await tablet.getByRole('button', { name: 'Reload weapon', exact: true }).tap();
+  await waitForDebug(tablet, (state) => state.ammo === 30, 'Tablet touch reload completes');
+  await screenshot(tablet, 'tablet-game');
+  await tablet.getByRole('button', { name: 'Pause game', exact: true }).tap();
+  await expect(tablet.getByTestId('pause-menu')).toBeVisible();
+  console.log('PASS: tablet touch movement, fire, reload, pause at 1024px');
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   assert.deepEqual(networkErrors, [], 'No server errors');
   console.log(JSON.stringify({ ok: true, baseURL, artifacts }));

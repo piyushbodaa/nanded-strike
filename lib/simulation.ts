@@ -1,4 +1,4 @@
-import { COLLIDERS, SPAWNS, WAYPOINTS, MAP_BOUNDS } from "./map";
+import { COLLIDERS, SPAWNS, SPAWN_YAWS, WAYPOINTS, MAP_BOUNDS } from "./map";
 
 export type Team = "blue" | "orange";
 export type Weapon = "rifle" | "pistol";
@@ -32,6 +32,8 @@ export const EYE_HEIGHT = 1.58;
 export const PLAYER_RADIUS = 0.36;
 export const MATCH_DURATION = 300_000;
 export const TARGET_SCORE = 25;
+// Tolerates a delayed mobile poll while still releasing abandoned controls promptly.
+export const INPUT_EXPIRY = 650;
 export const WEAPONS = {
   rifle: { name: "AR30", magazine: 30, reserve: 120, damage: 34, interval: 110, reload: 1900, range: 110 },
   pistol: { name: "P12", magazine: 12, reserve: 60, damage: 27, interval: 260, reload: 1250, range: 70 },
@@ -70,7 +72,7 @@ function spawn(match: Match, player: Player) {
   }
   Object.assign(player, { x:best.x, z:best.z, y:0, vy:0, health:100, respawnAt:0, reloadUntil:0,
     invulnerableUntil:match.time+1300, magazines:magazines(), weapon:"rifle", ammo:30, reserve:120,
-    yaw:player.team === "blue" ? -Math.PI / 2 : Math.PI / 2, pitch:0, intent:{...ZERO_INPUT}, botTarget:-1,
+    yaw:SPAWN_YAWS[player.team], pitch:0, intent:{...ZERO_INPUT}, botTarget:-1,
     botDecisionAt:0, nextBotShotAt:match.time+700, lastShotAt:0 });
   event(match,"respawn",player);
 }
@@ -256,7 +258,7 @@ export function advanceMatch(match:Match,now:number) {
     for(const p of match.players){
       if(p.health<=0){if(p.respawnAt<=match.time)spawn(match,p);else continue;}
       if(p.reloadUntil&&p.reloadUntil<=match.time){const count=Math.min(WEAPONS[p.weapon].magazine-p.ammo,p.reserve);p.ammo+=count;p.reserve-=count;p.reloadUntil=0;}
-      const input=p.bot?botInput(match,p):match.time-p.lastInputAt<350?p.intent:{...ZERO_INPUT};
+      const input=p.bot?botInput(match,p):match.time-p.lastInputAt<INPUT_EXPIRY?p.intent:{...ZERO_INPUT};
       movePlayer(match,p,input,delta/1000);
       if(input.reload)beginReload(match,p);
       if(input.shoot&&!input.sprint)shoot(match,p);

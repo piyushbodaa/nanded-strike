@@ -1,10 +1,12 @@
-import { env } from "cloudflare:workers";
+import { getRoomStore, ROOM_TTL_MS } from "@/lib/room-store";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 import { addPlayer, advanceMatch, applyInput, createMatch, removePlayer, snapshot, type Input, type Match } from "@/lib/simulation";
 
 interface Session { playerId: string; tokenHash: string; lastSeen: number; }
-interface RoomRow { code: string; state: string; sessions: string; revision: number; updated_at: number; }
 interface Payload { action?: string; name?: string; room?: string; token?: string; team?: string; input?: Partial<Input>; }
-const ROOM_TTL = 2 * 60 * 60 * 1000;
+const ROOM_TTL = ROOM_TTL_MS;
 const SESSION_TTL = 45_000;
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 class GameError extends Error { constructor(message:string, public status:number) { super(message); } }
@@ -26,19 +28,16 @@ export async function POST(request:Request) {
     try { payload=JSON.parse(body) as Payload; } catch { throw new GameError("Expected a JSON game request.",400); }
     if(!payload||typeof payload!=="object"||Array.isArray(payload))throw new GameError("Invalid game request.",400);
     if(!["create","join","input","leave"].includes(payload.action??""))throw new GameError("Unknown game action.",400);
-    if(!env.DB)throw new GameError("Online rooms are temporarily unavailable. Solo practice is ready to play.",503);
-    // Each request starts at the primary, then preserves causal consistency for the CAS loop.
-    const db=env.DB.withSession("first-primary");
+    const rooms = getRoomStore();
     const now=Date.now();
     if(payload.action==="create") {
-      await db.prepare("DELETE FROM game_rooms WHERE updated_at < ?").bind(now-ROOM_TTL).run();
+      await rooms.prune(now-ROOM_TTL);
       const state=createMatch(now),player=addPlayer(state,displayName(payload.name),payload.team==="orange"?"orange":"blue");
       const secret=token(),sessions:Session[]=[{playerId:player.id,tokenHash:await digest(secret),lastSeen:now}];
       for(let attempt=0;attempt<4;attempt++) {
         const room=code();
-        const result=await db.prepare("INSERT OR IGNORE INTO game_rooms (code, state, sessions, revision, updated_at) VALUES (?, ?, ?, 0, ?)")
-          .bind(room,JSON.stringify(state),JSON.stringify(sessions),now).run();
-        if(result.meta.changes)return response({room,token:secret,playerId:player.id,state:snapshot(state,player.id)},201);
+        const created = await rooms.create({code:room,state:JSON.stringify(state),sessions:JSON.stringify(sessions),revision:0,updated_at:now});
+        if(created)return response({room,token:secret,playerId:player.id,state:snapshot(state,player.id)},201);
       }
       throw new GameError("Could not reserve a room code. Please try again.",503);
     }
@@ -54,10 +53,10 @@ export async function POST(request:Request) {
     const joinToken=payload.action==="join"?token():null;
     const joinHash=joinToken?await digest(joinToken):null;
     for(let attempt=0;attempt<10;attempt++) {
-      const row=await db.prepare("SELECT code, state, sessions, revision, updated_at FROM game_rooms WHERE code = ?").bind(room).first<RoomRow>();
+      const row=await rooms.get(room);
       if(!row||now-row.updated_at>ROOM_TTL)throw new GameError("Room not found or expired. Check the code or create a new room.",404);
       const state=JSON.parse(row.state) as Match;
-      const tick=Math.max(now,row.updated_at,state.time);
+      const tick=Math.max(Date.now(),row.updated_at,state.time);
       let sessions=JSON.parse(row.sessions) as Session[];
       const session=tokenHash?sessions.find(s=>s.tokenHash===tokenHash):undefined;
       if(payload.action!=="join"&&(!session||now-session.lastSeen>SESSION_TTL))throw new GameError("Your room session has expired. Join again.",401);
@@ -76,9 +75,8 @@ export async function POST(request:Request) {
         if(!state.players.some(p=>p.id===playerId&&!p.bot))throw new GameError("Player session not found. Join again.",401);
         applyInput(state,playerId!,payload.input!,tick);session!.lastSeen=Math.max(session!.lastSeen,tick);
       }
-      const result=await db.prepare("UPDATE game_rooms SET state = ?, sessions = ?, revision = revision + 1, updated_at = ? WHERE code = ? AND revision = ?")
-        .bind(JSON.stringify(state),JSON.stringify(sessions),tick,room,row.revision).run();
-      if(!result.meta.changes)continue;
+      const updated=await rooms.compareAndSwap({code:room,state:JSON.stringify(state),sessions:JSON.stringify(sessions),revision:row.revision+1,updated_at:tick},row.revision);
+      if(!updated)continue;
       if(payload.action==="leave")return response({ok:true});
       return response({room,...(joinToken?{token:joinToken,playerId}:{}),state:snapshot(state,playerId)});
     }

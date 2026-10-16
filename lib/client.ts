@@ -1,19 +1,20 @@
 import * as THREE from 'three';
 import { createWorld } from './world';
 import { createMatch, addPlayer, advanceMatch, applyInput, movePlayer, EYE_HEIGHT } from './simulation';
-import { COLLIDERS, MAP_BOUNDS } from './map';
+import { COLLIDERS, MAP_BOUNDS, ROADS } from './map';
 
 type Match = ReturnType<typeof createMatch>;
 type Player = Match['players'][number];
 export type Mode = 'lobby' | 'solo' | 'online';
 export type Settings = { sensitivity: number; volume: number; quality: 'high' | 'low' };
 export type HUD = {
+  now: number;
   mode: Mode; paused: boolean; player: Player | null; players: Player[];
   scores: { blue: number; orange: number }; remaining: number; room: string;
   ping: number; winner: string | null; feed: { id: string; text: string }[];
   hit: boolean; hurt: boolean; connected: boolean; scoreboard: boolean;
 };
-export const emptyHUD: HUD = { mode:'lobby', paused:false, player:null, players:[], scores:{blue:0,orange:0}, remaining:300, room:'',ping:0,winner:null,feed:[],hit:false,hurt:false,connected:true,scoreboard:false };
+export const emptyHUD: HUD = { now:0, mode:'lobby', paused:false, player:null, players:[], scores:{blue:0,orange:0}, remaining:300, room:'',ping:0,winner:null,feed:[],hit:false,hurt:false,connected:true,scoreboard:false };
 
 class Sound {
   ctx: AudioContext | null = null;
@@ -41,7 +42,7 @@ class Sound {
 }
 
 export class GameClient {
-  canvas:HTMLCanvasElement; renderer:THREE.WebGLRenderer; scene=new THREE.Scene(); camera=new THREE.PerspectiveCamera(74,1,.05,220);
+  canvas:HTMLCanvasElement; renderer:THREE.WebGLRenderer; scene=new THREE.Scene(); camera=new THREE.PerspectiveCamera(74,1,.05,420);
   world:ReturnType<typeof createWorld>; weapon=new THREE.Group(); muzzle:THREE.Mesh;
   mode:Mode='lobby'; paused=false; match:Match|null=null; playerId=''; room=''; token='';
   settings:Settings={sensitivity:1,volume:.35,quality:'high'}; sound=new Sound();
@@ -92,6 +93,7 @@ export class GameClient {
     this.listen(this.canvas,'touchstart',((e:TouchEvent)=>{if(this.mode==='lobby'||this.paused)return;const t=e.changedTouches[0];this.touchLook={id:t.identifier,x:t.clientX,y:t.clientY};e.preventDefault();}) as EventListener,{passive:false});
     this.listen(this.canvas,'touchmove',((e:TouchEvent)=>{if(!this.touchLook)return;const t=Array.from(e.changedTouches).find(t=>t.identifier===this.touchLook!.id);if(!t)return;this.yaw-=(t.clientX-this.touchLook.x)*.006*this.settings.sensitivity;this.pitch=THREE.MathUtils.clamp(this.pitch-(t.clientY-this.touchLook.y)*.006*this.settings.sensitivity,-1.45,1.45);this.touchLook={id:t.identifier,x:t.clientX,y:t.clientY};e.preventDefault();}) as EventListener,{passive:false});
     this.listen(this.canvas,'touchend',()=>{this.touchLook=null;});
+    this.listen(this.canvas,'touchcancel',()=>{this.touchLook=null;});
   }
   resize(){const w=window.innerWidth,h=window.innerHeight;this.renderer.setSize(w,h,false);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();}
   updateSettings(settings:Settings){this.settings=settings;this.sound.volume=settings.volume;this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,settings.quality==='high'?1.5:1));this.renderer.shadowMap.enabled=settings.quality==='high';this.resize();}
@@ -105,7 +107,7 @@ export class GameClient {
     this.match=result.state;this.playerId=result.playerId;this.token=result.token;this.room=result.room;this.mode='online';this.setupPlayer();
     this.sound.unlock();this.setPaused(true);this.emitHUD();this.poll();
   }
-  setupPlayer(){const p=this.me;if(!p)return;this.yaw=p.yaw;this.pitch=0;this.selectedWeapon='rifle';this.seq=0;this.predicted={...p};this.displayPosition.set(p.x,p.y+EYE_HEIGHT,p.z);this.previousHealth=p.health;this.seenEvents.clear();this.feed=[];this.connected=true;this.weapon.visible=true;}
+  setupPlayer(){const p=this.me;if(!p)return;this.yaw=p.yaw;this.pitch=0;this.selectedWeapon='rifle';this.seq=0;this.predicted={...p};this.displayPosition.set(p.x,p.y+EYE_HEIGHT,p.z);this.previousHealth=p.health;this.seenEvents=new Set(this.match?.events.map(event=>String(event.id)));this.feed=[];this.connected=true;this.weapon.visible=true;}
   input(){return {forward:this.paused?0:this.touchMove.forward+Number(this.keys.has('KeyW')||this.keys.has('ArrowUp'))-Number(this.keys.has('KeyS')||this.keys.has('ArrowDown')),strafe:this.paused?0:this.touchMove.strafe+Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft')),yaw:this.yaw,pitch:this.pitch,shoot:!this.paused&&(this.shooting||this.queuedShot),reload:!this.paused&&this.reloading,sprint:this.keys.has('ShiftLeft'),jump:!this.paused&&this.jumping,weapon:this.selectedWeapon,seq:++this.seq};}
   async request(body:Record<string,unknown>){
     const response=await fetch('/api/game',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(6000)});
@@ -187,7 +189,7 @@ export class GameClient {
     const dt=Math.min((t-this.lastFrame)/1000,.05)||.016;this.lastFrame=t;const now=Date.now();
     this.world.update(t/1000);
     if(this.mode==='lobby'){
-      const angle=t*.000017;this.camera.position.set(28+Math.sin(angle)*2,19,35+Math.cos(angle)*2);this.camera.lookAt(-1,1,-3);this.weapon.visible=false;
+      const angle=t*.000017;this.camera.position.set(39+Math.sin(angle)*2,24,51+Math.cos(angle)*2);this.camera.lookAt(-13,3,-8);this.weapon.visible=false;
     }else if(this.match&&this.me){
       const input=this.input();
       if(this.mode==='solo'&&!this.paused){applyInput(this.match,this.playerId,input,now);advanceMatch(this.match,now);this.reloading=false;this.jumping=false;this.queuedShot=false;}
@@ -211,11 +213,11 @@ export class GameClient {
     if(t-this.lastHUD>90){this.emitHUD();this.lastHUD=t;}
     this.renderer.render(this.scene,this.camera);this.frame=requestAnimationFrame(this.animate);
   };
-  emitHUD(){const now=Date.now();this.onHUD({mode:this.mode,paused:this.paused,player:this.me?{...this.me}:null,players:this.match?.players.map(p=>({...p}))??[],scores:this.match?.scores??{blue:0,orange:0},remaining:Math.max(0,Math.ceil(((this.match?.endsAt??now+300000)-(this.mode==='solo'&&this.paused?this.pausedAt:now))/1000)),room:this.room,ping:this.ping,winner:this.match?.winner??null,feed:this.feed.map(({id,text})=>({id,text})),hit:now<this.hitUntil,hurt:now<this.hurtUntil,connected:this.connected,scoreboard:this.scoreboard});}
+  emitHUD(){const now=Date.now();this.onHUD({now,mode:this.mode,paused:this.paused,player:this.me?{...this.me}:null,players:this.match?.players.map(p=>({...p}))??[],scores:this.match?.scores??{blue:0,orange:0},remaining:Math.max(0,Math.ceil(((this.match?.endsAt??now+300000)-(this.mode==='solo'&&this.paused?this.pausedAt:now))/1000)),room:this.room,ping:this.ping,winner:this.match?.winner??null,feed:this.feed.map(({id,text})=>({id,text})),hit:now<this.hitUntil,hurt:now<this.hurtUntil,connected:this.connected,scoreboard:this.scoreboard});}
   drawMinimap(canvas:HTMLCanvasElement,players:Player[]=[],selfId=''){
-    const ctx=canvas.getContext('2d');if(!ctx)return;const size=canvas.width;ctx.clearRect(0,0,size,size);const scale=size/70,offset=size/2;
+    const ctx=canvas.getContext('2d');if(!ctx)return;const size=canvas.width;ctx.clearRect(0,0,size,size);const span=Math.max(MAP_BOUNDS.maxX-MAP_BOUNDS.minX,MAP_BOUNDS.maxZ-MAP_BOUNDS.minZ)+10;const scale=size/span,offset=size/2;
     ctx.fillStyle='#252e2b';ctx.fillRect(0,0,size,size);ctx.strokeStyle='#35403a';ctx.lineWidth=.5;for(let i=0;i<size;i+=size/7){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,size);ctx.moveTo(0,i);ctx.lineTo(size,i);ctx.stroke();}
-    ctx.fillStyle='#3b6265';ctx.fillRect((MAP_BOUNDS.maxX+1)*scale+offset,0,size,size);
+    for(const road of ROADS){ctx.strokeStyle=road.kind==='main'?'#53615b':'#424f49';ctx.lineWidth=road.width*scale;ctx.lineJoin='round';ctx.beginPath();road.points.forEach((p,i)=>{if(i===0)ctx.moveTo(p.x*scale+offset,p.z*scale+offset);else ctx.lineTo(p.x*scale+offset,p.z*scale+offset);});ctx.stroke();}
     ctx.fillStyle='#707263';ctx.strokeStyle='#999681';for(const c of COLLIDERS){const x=(c.x-c.w/2)*scale+offset,z=(c.z-c.d/2)*scale+offset;ctx.fillRect(x,z,c.w*scale,c.d*scale);ctx.strokeRect(x,z,c.w*scale,c.d*scale);}
     const me=players.find(p=>p.id===selfId);
     for(const p of players){if(p.health<=0||p.id!==selfId&&me&&p.team!==me.team)continue;ctx.fillStyle=p.id===selfId?'#ffffff':p.team==='blue'?'#70bbc5':'#e9ad66';ctx.beginPath();ctx.arc(p.x*scale+offset,p.z*scale+offset,p.id===selfId?3.5:2.5,0,Math.PI*2);ctx.fill();if(p.id===selfId){ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(p.x*scale+offset,p.z*scale+offset);ctx.lineTo((p.x-Math.sin(this.yaw)*5)*scale+offset,(p.z-Math.cos(this.yaw)*5)*scale+offset);ctx.stroke();}}
