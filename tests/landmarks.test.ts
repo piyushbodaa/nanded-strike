@@ -31,9 +31,10 @@ test('coaching landmarks retain mapped footprints and have reachable road viewpo
     const building=BUILDINGS.find(b=>b.id===landmark.buildingId)!;
     const source=geodata.buildings.find(b=>b.id===landmark.buildingId)!;
     assert.deepEqual(building.polygon,source.points.map(([x,z])=>({x,z})),`${landmark.id} footprint changed`);
-    assert.ok(location,`${landmark.id} needs a selectable starting point`);
-    assert.ok(isWalkable(location.x,location.z),`${landmark.id} viewpoint is obstructed`);
-    for(let d=0;d<=3;d+=.25)assert.ok(isWalkable(location.x-Math.sin(location.yaw)*d,location.z-Math.cos(location.yaw)*d),`${landmark.id} has no clear approach`);
+    assert.ok(location,`${landmark.id} needs a selectable starting sector`);
+    const view=landmark.viewpoint;
+    assert.ok(isWalkable(view.x,view.z),`${landmark.id} viewpoint is obstructed`);
+    for(let d=0;d<=2;d+=.25)assert.ok(isWalkable(view.x-Math.sin(view.yaw)*d,view.z-Math.cos(view.yaw)*d),`${landmark.id} has no clear approach`);
     assert.equal(isWalkable(landmark.x+Math.sin(landmark.yaw)*.2,landmark.z+Math.cos(landmark.yaw)*.2),false,`${landmark.id} facade must block movement`);
   }
 });

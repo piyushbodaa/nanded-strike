@@ -4,6 +4,7 @@ import { LOCATIONS } from './locations';
 import { createLandmarks } from './landmarks';
 import { LANDMARKS } from './landmark-data';
 import { createStreetDetails } from './street-details';
+import { createPlaceLabels } from './place-labels';
 
 const textureCache = new Map<string, THREE.Texture>();
 let texturePromise: Promise<void> | undefined;
@@ -33,6 +34,8 @@ type V3=[number,number,number];
 type UV=[number,number];
 type Batch={positions:number[];normals:number[];uvs:number[];colors:number[]};
 type Tile={group:THREE.Group;x:number;z:number;batches:Map<THREE.Material,Batch>};
+type FacadeInstance={x:number;y:number;z:number;width:number;height:number;yaw:number;tint:string};
+type DetailTile={group:THREE.Group;x:number;z:number;panels:FacadeInstance[]};
 const TILE=128;
 
 /** Georeferenced Nanded. Source footprint outlines are exact; heights/façades are estimates. */
@@ -42,6 +45,9 @@ export function createWorld(scene:THREE.Scene) {
   scene.fog=new THREE.Fog('#bed2e1',380,700);
   const resources:{dispose():void}[]=[];
   const tiles=new Map<string,Tile>();
+  const detailTiles=new Map<string,DetailTile>();
+  const customFacades=new Map(LANDMARKS.filter(landmark=>landmark.buildingId).map(landmark=>[landmark.buildingId,landmark]));
+  let detailedBuildings=0,windowCount=0,doorCount=0;
   const materials:THREE.Material[]=[];
   const colorCache=new Map<string,THREE.Color>();
   const color=(value:string)=>{let c=colorCache.get(value);if(!c){c=new THREE.Color(value);colorCache.set(value,c);}return c;};
@@ -128,12 +134,48 @@ export function createWorld(scene:THREE.Scene) {
     for(const p of road.points)disk(p,road.width/2,.035,asphalt,'#ffffff');
   }
 
+  // Every footprint receives nearby exterior detail. Repeated window/door panels
+  // share geometry and instance buffers; the separate cells disappear beyond 310m.
+  // Source polygons and collision geometry remain unchanged.
+  function facadePanel(x:number,y:number,z:number,width:number,height:number,yaw:number,tint:string,building:MapPoint) {
+    const tx=Math.floor(building.x/TILE),tz=Math.floor(building.z/TILE),key=`${tx},${tz}`;
+    let cell=detailTiles.get(key);
+    if(!cell){const group=new THREE.Group();group.name=`Nearby facade detail ${key}`;group.visible=false;root.add(group);cell={group,x:(tx+.5)*TILE,z:(tz+.5)*TILE,panels:[]};detailTiles.set(key,cell);}
+    cell.panels.push({x,y,z,width,height,yaw,tint});
+  }
+  type RoadSegment={a:MapPoint;b:MapPoint};
+  const roadCells=new Map<string,RoadSegment[]>();
+  for(const road of ROADS)for(let i=1;i<road.points.length;i++) {
+    const segment={a:road.points[i-1],b:road.points[i]};
+    for(let x=Math.floor(Math.min(segment.a.x,segment.b.x)/TILE);x<=Math.floor(Math.max(segment.a.x,segment.b.x)/TILE);x++)for(let z=Math.floor(Math.min(segment.a.z,segment.b.z)/TILE);z<=Math.floor(Math.max(segment.a.z,segment.b.z)/TILE);z++) {
+      const key=`${x},${z}`,entries=roadCells.get(key)??[];entries.push(segment);roadCells.set(key,entries);
+    }
+  }
+  const nearestStreet=(point:MapPoint)=>{
+    const tx=Math.floor(point.x/TILE),tz=Math.floor(point.z/TILE);let nearest:MapPoint|undefined,distance=Infinity;
+    for(let x=tx-1;x<=tx+1;x++)for(let z=tz-1;z<=tz+1;z++)for(const {a,b} of roadCells.get(`${x},${z}`)??[]) {
+      const dx=b.x-a.x,dz=b.z-a.z,t=Math.max(0,Math.min(1,((point.x-a.x)*dx+(point.z-a.z)*dz)/(dx*dx+dz*dz||1)));
+      const px=a.x+dx*t,pz=a.z+dz*t,d=(px-point.x)**2+(pz-point.z)**2;
+      if(d<distance){distance=d;nearest={x:px,z:pz};}
+    }
+    return nearest;
+  };
+
   for(const building of BUILDINGS) {
     const t=tile(building.x,building.z),pts=[...building.polygon];
     let area=0;for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];area+=a.x*b.z-b.x*a.z;}
     if(area<0)pts.reverse();
     const h=building.h,roof=h-.22;
-    const detail=Boolean(building.name)||LOCATIONS.some(l=>Math.hypot(l.x-building.x,l.z-building.z)<115);
+    const custom=customFacades.get(building.id),street=nearestStreet(building);
+    const seed=Array.from(building.id).reduce((value,c)=>(Math.imul(value,31)+c.charCodeAt(0))>>>0,0);
+    let entrance=-1,entranceDistance=Infinity,buildingPanels=0;
+    // Choose a street-facing edge, without implying a surveyed door position.
+    if(street&&!custom)for(let i=0;i<pts.length;i++) {
+      const a=pts[i],b=pts[(i+1)%pts.length],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<2.5)continue;
+      const x=(a.x+b.x)/2,z=(a.z+b.z)/2;
+      if((street.x-x)*dz/len-(street.z-z)*dx/len<0)continue;
+      const d=Math.hypot(street.x-x,street.z-z);if(d<entranceDistance){entrance=i;entranceDistance=d;}
+    }
 
     const wallBatch=batch(t,walls),trimBatch=batch(t,trim);
     for(let i=0;i<pts.length;i++) {
@@ -144,23 +186,28 @@ export function createWorld(scene:THREE.Scene) {
       // Coping and plinth are on the original outline, never invented replacement blocks.
       quad(trimBatch,coords(a,h-.3,.009),coords(a,h,.009),coords(b,h,.009),coords(b,h-.3,.009),'#b8b5ac');
       quad(trimBatch,coords(a,0,.01),coords(a,.42,.01),coords(b,.42,.01),coords(b,0,.01),'#99978f');
-      if(detail && len>2.4) {
+      const customFront=custom&&normal.x*Math.sin(custom.yaw)+normal.z*Math.cos(custom.yaw)>.85;
+      const entryCenter=.32+(seed%4)*.12,entryWidth=Math.min(1.2,len*.4);
+      if(!customFront&&len>2.4) {
         const count=Math.max(1,Math.floor(len/3.4)),floors=Math.max(1,Math.round(h/3.2));
         for(let floor=0;floor<floors;floor++)for(let k=0;k<count;k++) {
-          const center=(k+.5)/count,half=Math.min(.68,len/(count*3))/len;
-          const p={x:a.x+dx*(center-half),z:a.z+dz*(center-half)},q={x:a.x+dx*(center+half),z:a.z+dz*(center+half)};
+          const center=(k+.5)/count,half=Math.min(.68,len/(count*3));
+          if(floor===0&&i===entrance&&Math.abs(center-entryCenter)*len<half+entryWidth/2+.18)continue;
           const low=floor*3.2+1.05,high=Math.min(low+1.28,h-.5);if(high<=low)continue;
-          quad(batch(t,windows),coords(p,low,.024),coords(p,high,.024),coords(q,high,.024),coords(q,low,.024),floor%2?'#33434c':'#40515a');
-          ribbon({x:p.x+normal.x*.08,z:p.z+normal.z*.08},{x:q.x+normal.x*.08,z:q.z+normal.z*.08},.17,low-.05,trim,'#d8d7cb');
-          const middle={x:(p.x+q.x)/2,z:(p.z+q.z)/2},frameHalf=.035/len;
-          const f1={x:middle.x-dx*frameHalf,z:middle.z-dz*frameHalf},f2={x:middle.x+dx*frameHalf,z:middle.z+dz*frameHalf};
-          quad(trimBatch,coords(f1,low,.028),coords(f1,high,.028),coords(f2,high,.028),coords(f2,low,.028),'#b6b9b5');
+          facadePanel(a.x+dx*center+normal.x*.03,(low+high)/2,a.z+dz*center+normal.z*.03,half*2,high-low,Math.atan2(normal.x,normal.z),['#33434c','#40515a','#43514e','#344552'][(floor+seed)%4],building);
+          windowCount++;buildingPanels++;
+        }
+        if(i===entrance) {
+          const high=Math.min(2.2,h-.55);
+          facadePanel(a.x+dx*entryCenter+normal.x*.035,(high+.12)/2,a.z+dz*entryCenter+normal.z*.035,entryWidth,high-.12,Math.atan2(normal.x,normal.z),['#5d5143','#4a605b','#626b6a','#3d4e5c'][seed%4],building);
+          doorCount++;buildingPanels++;
         }
       }
     }
     flat(t,concrete,pts,roof,'#cbc8bf');
     // Narrow interior coping faces avoid an invisible open roof while keeping footprint exact.
     flat(t,concrete,pts,h,'#cfccc2');
+    if(buildingPanels)detailedBuildings++;
   }
 
   // Place readable locality markers on existing facades close to the verified sector starts.
@@ -186,7 +233,7 @@ export function createWorld(scene:THREE.Scene) {
     const width=Math.min(6.5,length-.3),geo=new THREE.PlaneGeometry(width,width/4);resources.push(geo);
     const mesh=new THREE.Mesh(geo,mat);mesh.position.set(x+nx*.05,Math.min(3.7,building.h-1),z+nz*.05);mesh.rotation.y=Math.atan2(nx,nz);tile(x,z).group.add(mesh);
   }
-  for(const l of LOCATIONS.filter(l=>!LANDMARKS.some(landmark=>landmark.locationId===l.id))) {
+  for(const l of LOCATIONS.filter(l=>!LANDMARKS.some(landmark=>landmark.locationId===l.id&&Math.hypot(landmark.x-l.x,landmark.z-l.z)<60))) {
     const b=[...BUILDINGS].filter(b=>b.w>4&&b.d>3).sort((a,b)=>Math.hypot(a.x-l.x,a.z-l.z)-Math.hypot(b.x-l.x,b.z-l.z))[0];
     if(b)sign(l.label,l.name.toUpperCase()+' · NANDED',b,l);
   }
@@ -204,23 +251,60 @@ export function createWorld(scene:THREE.Scene) {
     const mesh=new THREE.Mesh(g,m);mesh.castShadow=m===walls||m===concrete;mesh.receiveShadow=true;t.group.add(mesh);resources.push(g);triangles+=b.positions.length/9;meshes++;
     b.positions.length=b.normals.length=b.uvs.length=b.colors.length=0;
   }
+  // Two draw calls per nearby cell: coloured panels and pale centre bars/sills.
+  // A complete window uses six triangles and 152 bytes of instance data, instead
+  // of allocating repeated vertex/normal/UV/color geometry for every opening.
+  const panelGeometry=new THREE.PlaneGeometry(1,1);
+  panelGeometry.setAttribute('color',new THREE.Float32BufferAttribute(Array(12).fill(1),3));
+  const frameGeometry=new THREE.BufferGeometry();
+  const framePositions:number[]=[],frameNormals:number[]=[];
+  const frameQuad=(left:number,bottom:number,right:number,top:number,depth:number)=>{
+    framePositions.push(left,bottom,depth,right,bottom,depth,right,top,depth,left,bottom,depth,right,top,depth,left,top,depth);
+    for(let i=0;i<6;i++)frameNormals.push(0,0,1);
+  };
+  frameQuad(-.025,-.5,.025,.5,.012); // centre mullion
+  frameQuad(-.56,-.58,.56,-.5,.09); // projecting sill front
+  frameGeometry.setAttribute('position',new THREE.Float32BufferAttribute(framePositions,3));
+  frameGeometry.setAttribute('normal',new THREE.Float32BufferAttribute(frameNormals,3));
+  frameGeometry.setAttribute('color',new THREE.Float32BufferAttribute(Array(framePositions.length).fill(1),3));
+  resources.push(panelGeometry,frameGeometry);
+  const frameTint=new THREE.Color('#c5c9be'),matrix=new THREE.Matrix4(),quaternion=new THREE.Quaternion(),position=new THREE.Vector3(),scale=new THREE.Vector3(),axis=new THREE.Vector3(0,1,0);
+  let detailMeshes=0,detailTriangles=0,detailBufferBytes=0;
+  for(const cell of detailTiles.values()) {
+    const panels=new THREE.InstancedMesh(panelGeometry,windows,cell.panels.length),frames=new THREE.InstancedMesh(frameGeometry,trim,cell.panels.length);
+    panels.name='Estimated windows and doors';frames.name='Window centre bars and sills';
+    panels.receiveShadow=frames.receiveShadow=true;
+    cell.panels.forEach((panel,index)=>{
+      position.set(panel.x,panel.y,panel.z);scale.set(panel.width,panel.height,1);quaternion.setFromAxisAngle(axis,panel.yaw);matrix.compose(position,quaternion,scale);
+      panels.setMatrixAt(index,matrix);panels.setColorAt(index,color(panel.tint));frames.setMatrixAt(index,matrix);frames.setColorAt(index,frameTint);
+    });
+    panels.computeBoundingSphere();frames.computeBoundingSphere();cell.group.add(panels,frames);resources.push(panels,frames);
+    detailMeshes+=2;detailTriangles+=cell.panels.length*6;detailBufferBytes+=cell.panels.length*152;
+    cell.panels.length=0;
+  }
+  meshes+=detailMeshes;triangles+=detailTriangles;
   const landmarks=createLandmarks();root.add(landmarks.group);
   const streetDetails=createStreetDetails();root.add(streetDetails.group);
+  const placeLabels=createPlaceLabels();root.add(placeLabels.group);
   landmarks.group.traverse(object=>{if(object instanceof THREE.Mesh){meshes++;triangles+=(object.geometry.index?.count??object.geometry.getAttribute('position').count)/3;}});
   const hemi=new THREE.HemisphereLight('#d5e6f4','#747567',1.65);root.add(hemi);
   const sun=new THREE.DirectionalLight('#fff3dc',2.8);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-72;sun.shadow.camera.right=72;sun.shadow.camera.top=72;sun.shadow.camera.bottom=-72;sun.shadow.camera.near=1;sun.shadow.camera.far=260;sun.shadow.bias=-.00012;sun.shadow.normalBias=.035;root.add(sun,sun.target);
   const initial=LOCATIONS[0];sun.position.set(initial.x-65,100,initial.z+45);sun.target.position.set(initial.x,0,initial.z);
-  root.userData.stats={buildings:BUILDINGS.length,roadPaths:ROADS.length,tiles:tiles.size,landmarks:landmarks.group.children.length,meshes,triangles};
+  root.userData.stats={buildings:BUILDINGS.length,roadPaths:ROADS.length,tiles:tiles.size,landmarks:landmarks.group.children.length,...placeLabels.stats,meshes:meshes+placeLabels.stats.signMeshes,triangles:triangles+placeLabels.stats.signTriangles,detailedBuildings,windows:windowCount,doors:doorCount,detailTiles:detailTiles.size,detailMeshes,detailTriangles,detailBufferBytes,detailDistance:310,visibleDetailTiles:0};
   let lastX=Infinity,lastZ=Infinity;
   return {
+    stats:root.userData.stats,
     update(_time:number,focus?:MapPoint) {
       const p=focus??initial;
       if(Math.hypot(p.x-lastX,p.z-lastZ)<12)return;
-      lastX=p.x;lastZ=p.z;streetDetails.update(p);
+      lastX=p.x;lastZ=p.z;streetDetails.update(p);placeLabels.update(p);
       for(const t of tiles.values())t.group.visible=Math.hypot(t.x-p.x,t.z-p.z)<790;
+      let visibleDetailTiles=0;
+      for(const cell of detailTiles.values()){cell.group.visible=Math.hypot(cell.x-p.x,cell.z-p.z)<310;if(cell.group.visible)visibleDetailTiles++;}
+      root.userData.stats.visibleDetailTiles=visibleDetailTiles;
       for(const landmark of landmarks.group.children)landmark.visible=Math.hypot(landmark.position.x-p.x,landmark.position.z-p.z)<790;
       const sx=Math.round(p.x/8)*8,sz=Math.round(p.z/8)*8;sun.position.set(sx-65,100,sz+45);sun.target.position.set(sx,0,sz);sun.target.updateMatrixWorld();
     },
-    dispose(){streetDetails.dispose();landmarks.dispose();scene.remove(root);for(const resource of resources)resource.dispose();for(const m of materials)m.dispose();sun.shadow.map?.dispose();},
+    dispose(){placeLabels.dispose();streetDetails.dispose();landmarks.dispose();scene.remove(root);for(const resource of resources)resource.dispose();for(const m of materials)m.dispose();sun.shadow.map?.dispose();},
   };
 }

@@ -1,0 +1,139 @@
+{
+  "title": "Nanded places directory: coverage and source notes",
+  "accessed": "2026-10-16T15:15:08+00:00",
+  "release": "2026-09-23.1",
+  "boundingBox": {
+    "west": 77.3018,
+    "south": 19.1678,
+    "east": 77.3204,
+    "north": 19.1808
+  },
+  "counts": {
+    "candidates": 832,
+    "places": 575,
+    "buildingFootprints": 5887,
+    "sourceReconciliation": {
+      "osm": {
+        "locality-not-building": 2,
+        "included": 95,
+        "duplicate": 3,
+        "no-name": 214,
+        "road-not-place": 6,
+        "outside-bounds": 2,
+        "administrative-boundary": 2
+      },
+      "overture": {
+        "included": 469,
+        "duplicate": 23,
+        "address-coordinate-conflict": 4,
+        "reported-closed": 1
+      },
+      "official": {
+        "included": 7
+      },
+      "reference": {
+        "included": 4
+      }
+    },
+    "dispositions": {
+      "locality-not-building": 2,
+      "included": 575,
+      "duplicate": 26,
+      "no-name": 214,
+      "road-not-place": 6,
+      "outside-bounds": 2,
+      "administrative-boundary": 2,
+      "address-coordinate-conflict": 4,
+      "reported-closed": 1
+    },
+    "categories": {
+      "education": 102,
+      "food": 63,
+      "health": 49,
+      "hotel": 14,
+      "landmark": 13,
+      "other": 25,
+      "service": 162,
+      "shop": 147
+    },
+    "sectors": {
+      "anand": 164,
+      "bhagya": 102,
+      "college-road": 120,
+      "shrinagar": 110,
+      "workshop": 79
+    },
+    "verification": {
+      "listed": 470,
+      "mapped": 95,
+      "photo-reference": 10
+    },
+    "overtureConfidenceBelowHalf": 169,
+    "sharedCoordinatePlaces": 45,
+    "osmElements": {
+      "bounds": 1,
+      "node": 3058,
+      "way": 658,
+      "relation": 2
+    },
+    "osmStructuralElementsWithoutPlaceTags": 3394
+  },
+  "coverage": "Every named point, building, campus and mapped facility candidate in the bundled OSM extract and every Overture place in the same bounding box was reconciled. This is not an exhaustive survey of every operating business. The 5,887 source building footprints and the named places are different datasets; one building can contain multiple businesses.",
+  "statusLabels": {
+    "mapped": "Name and position appear in OpenStreetMap; not checked as currently open.",
+    "listed": "Name and position appear in a directory or official store listing; source confidence retained when provided. Not checked as currently open.",
+    "photo-reference": "A photograph was inspected for the existing custom landmark model. Dimensions and some frontage offsets remain approximate; this is not a current opening-status check."
+  },
+  "quality": {
+    "pointGeometry": "Original source point coordinates are retained. Mapped areas use their polygon centroid, not a measured entrance. Labels or visiting viewpoints may be offset for visibility and public-road access.",
+    "confidence": "Overture confidence is a source model score, not a probability measured by this project. Low scores are retained and visibly identified as unverified listings; no confidence threshold silently removes a business.",
+    "duplicates": "Exact normalized names within 35 metres are merged automatically. Additional nearby name aliases and matching telephone numbers were manually reviewed in scripts/place-aliases.json. Every merge decision and original coordinate remains in place-source.json. Uncertain aliases and branches can remain duplicated.",
+    "sector": "Nearest of five existing locality anchors, solely for browsing; not an administrative boundary or asserted postal address.",
+    "sharedCoordinates": "Three or more records at identical coordinates are marked shared-coordinate and should not be attached to a precise building frontage. This is a review flag, not proof they are co-located.",
+    "categories": "Broad display category comes from the source taxonomy or OSM tags; source category is retained. Source tagging mistakes remain possible.",
+    "excluded": "Roads, administrative/locality areas, unnamed objects, out-of-bounds geometry and explicit different-city address conflicts and a reported permanently closed listing are retained in reconciliation but not displayed as businesses.",
+    "facades": "New place labels do not establish a photo-accurate business facade. Source footprint geometry remains available unchanged; display corrections are documented in /district-landmark-reference.json. No missing shop or building has been invented."
+  },
+  "gaps": [
+    "No complete door-to-door business or building survey is available.",
+    "No current opening-status verification; source listings may be stale or misplaced.",
+    "Most of the 5,887 source building footprints have no verified business or building name.",
+    "No photographic reconstruction of every street frontage; 10 custom landmarks have inspected image references.",
+    "Duplicate aliases, ambiguous categories and source coordinates can require local correction."
+  ],
+  "sources": [
+    {
+      "name": "OpenStreetMap contributors",
+      "url": "https://api.openstreetmap.org/api/0.6/map?bbox=77.3018,19.1678,77.3204,19.1808",
+      "raw": "/map-source.osm",
+      "license": "ODbL-1.0",
+      "attribution": "© OpenStreetMap contributors",
+      "licenseUrl": "https://www.openstreetmap.org/copyright"
+    },
+    {
+      "name": "Overture Maps Foundation places",
+      "url": "https://docs.overturemaps.org/guides/places/",
+      "catalog": "https://stac.overturemaps.org/catalog.json",
+      "release": "2026-09-23.1",
+      "raw": "/place-source.json",
+      "license": "Per-record CDLA-Permissive-2.0, Apache-2.0 or CC0-1.0; retained on raw source records",
+      "attribution": "Overture Maps Foundation; source providers identified on each record",
+      "licenseUrl": "https://docs.overturemaps.org/attribution/"
+    },
+    {
+      "name": "Existing photo references",
+      "url": "/landmark-reference.json"
+    },
+    {
+      "name": "Additional street and store references",
+      "url": "/district-landmark-reference.json"
+    }
+  ],
+  "reproduce": "python scripts/build-places.py rebuilds all outputs offline from bundled raw source records; script header documents acquisition with the official Overture client.",
+  "sourceRecords": "/place-source.json",
+  "licenseFiles": [
+    "/place-licenses/CDLA-Permissive-2.0.txt",
+    "/place-licenses/Apache-2.0.txt",
+    "/place-licenses/Foursquare-NOTICE.txt"
+  ]
+}

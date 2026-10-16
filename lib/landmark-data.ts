@@ -1,6 +1,7 @@
 /** Photo-observed landmark forms. Coordinates share the map's metre projection.
  * Pillar/gate dimensions and exact frontage offsets are estimates, not survey data.
  * No source photograph is redistributed as a game texture. */
+import { DISTRICT_LANDMARKS } from './district-landmark-data';
 export type LandmarkPoint={x:number;z:number};
 export type LandmarkSolid=LandmarkPoint&{w:number;d:number;h:number;polygon:LandmarkPoint[]};
 export type Landmark={
@@ -52,6 +53,7 @@ export const LANDMARKS:Landmark[]=[
   sourceUrl:'https://konaleclasses.com/home/contact',photoUrl:'https://konaleclasses.com/img/neet.jpg',
   viewpoint:{x:-198.0786,z:128.8857,yaw:-2.64287},
  },
+ ...DISTRICT_LANDMARKS,
 ];
 function solid(l:Landmark,x:number,z:number,w:number,d:number,h:number):LandmarkSolid {
  const c=Math.cos(l.yaw),s=Math.sin(l.yaw);

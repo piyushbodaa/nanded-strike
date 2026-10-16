@@ -5,6 +5,8 @@ import { createWeaponView } from './weapon-view';
 import { LOCATIONS, DEFAULT_LOCATION_ID } from './locations';
 import { createMatch, addPlayer, applyInput, movePlayer, EYE_HEIGHT, WEAPONS, type Weapon } from './simulation';
 import { COLLIDERS, MAP_BOUNDS, ROADS, SPAWN_YAWS } from './map';
+import { getPlace, PLACES, PLACE_CATEGORIES } from './places';
+import { placeViewpoint } from './place-layout';
 
 type Match = ReturnType<typeof createMatch>;
 type Player = Match['players'][number];
@@ -48,13 +50,14 @@ class Sound {
 export class GameClient {
   canvas:HTMLCanvasElement; renderer:THREE.WebGLRenderer; scene=new THREE.Scene(); camera=new THREE.PerspectiveCamera(74,1,.05,850);
   world:ReturnType<typeof createWorld>; weapon:THREE.Group; weaponView:ReturnType<typeof createWeaponView>;
-  mode:Mode='lobby'; paused=false; match:Match|null=null; playerId=''; room=''; token='';
+  mode:Mode='lobby'; paused=false; match:Match|null=null; playerId=''; room=''; token=''; visitingPlaceId='';
   settings:Settings={sensitivity:1,volume:.35,quality:'high'}; sound=new Sound();
   keys=new Set<string>(); yaw=0; pitch=0; shooting=false; queuedShot=false; reloading=false; jumping=false; selectedWeapon:Weapon='rifle'; seq=0;
   simulationTimer:ReturnType<typeof setInterval>; lobbyDirty=true; frame=0; lastFrame=0; lastHUD=0; pollTimer:ReturnType<typeof setTimeout>|null=null; networkGeneration=0;
   ping=0; connected=true; seenEvents=new Set<string>(); feed:{id:string,text:string,at:number}[]=[]; hitUntil=0; hurtUntil=0; previousHealth=100;
   characters=new Map<string,Actor>(); particles:{mesh:THREE.Object3D,until:number}[]=[];
   lastStep=0; pausedAt=0; scoreboard=false;
+  ignoreFirstLockedMovement=false;
   touch=typeof window!=='undefined' && matchMedia('(pointer: coarse)').matches;
   touchSprint=false; touchMove={forward:0,strafe:0}; touchLook:{id:number,x:number,y:number}|null=null;
   displayPosition=new THREE.Vector3(); predicted:Player|null=null; pendingController:AbortController|null=null;
@@ -70,21 +73,26 @@ export class GameClient {
     this.camera.rotation.order='YXZ';this.scene.add(this.camera);this.world=createWorld(this.scene);
     this.weaponView=createWeaponView(this.camera);this.weapon=this.weaponView.group;
     this.bind();this.resize();
-    Object.defineProperty(window,'__NANDED_DEBUG__',{configurable:true,get:()=>({mode:this.mode,location:this.location,locationId:this.match?.locationId,exploration:this.match?.exploration??false,pixelRatio:this.renderer.getPixelRatio(),animations:[...this.characters.values()].map(a=>a.animationState),phase:this.paused?'paused':this.mode==='lobby'?'lobby':'playing',playerId:this.playerId,roomCode:this.room,selectedWeapon:this.selectedWeapon,weapon:this.me?.weapon,visibleWeapon:this.weapon.children.filter(child=>child.visible&&['AR30 rifle','P12 handgun','Combat knife'].includes(child.name)).map(child=>child.name),lastAttackAt:this.me?.lastShotAt,reloadUntil:this.me?.reloadUntil,localPlayer:this.me?{x:this.me.x,z:this.me.z,health:this.me.health,ammo:this.me.ammo,weapon:this.me.weapon}:null,players:this.match?.players.map(p=>({id:p.id,x:p.x,z:p.z,bot:p.bot,team:p.team,weapon:p.weapon})),yaw:this.yaw,pitch:this.pitch,touchSprint:this.touchSprint,ammo:this.me?.ammo,health:this.me?.health,renderer:this.renderer.info.render})});
+    Object.defineProperty(window,'__NANDED_DEBUG__',{configurable:true,get:()=>({mode:this.mode,visitingPlaceId:this.visitingPlaceId,world:this.world.stats,location:this.location,locationId:this.match?.locationId,exploration:this.match?.exploration??false,pixelRatio:this.renderer.getPixelRatio(),animations:[...this.characters.values()].map(a=>a.animationState),phase:this.paused?'paused':this.mode==='lobby'?'lobby':'playing',playerId:this.playerId,roomCode:this.room,selectedWeapon:this.selectedWeapon,weapon:this.me?.weapon,visibleWeapon:this.weapon.children.filter(child=>child.visible&&['AR30 rifle','P12 handgun','Combat knife'].includes(child.name)).map(child=>child.name),lastAttackAt:this.me?.lastShotAt,reloadUntil:this.me?.reloadUntil,localPlayer:this.me?{x:this.me.x,z:this.me.z,health:this.me.health,ammo:this.me.ammo,weapon:this.me.weapon}:null,players:this.match?.players.map(p=>({id:p.id,x:p.x,z:p.z,bot:p.bot,team:p.team,weapon:p.weapon})),yaw:this.yaw,pitch:this.pitch,touchSprint:this.touchSprint,ammo:this.me?.ammo,health:this.me?.health,renderer:this.renderer.info.render})});
     this.simulationTimer=setInterval(()=>this.tick(),1000/60);
     this.frame=requestAnimationFrame(this.animate);
   }
-  get location(){const p=this.me;if(p)return [...LOCATIONS].sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0].name;return LOCATIONS.find(l=>l.id===this.match?.locationId)?.name??LOCATIONS[0].name;}
+  get location(){const p=this.me,place=getPlace(this.visitingPlaceId);if(p&&place&&Math.hypot(p.x-place.x,p.z-place.z)<90)return place.name;if(p)return [...LOCATIONS].sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0].name;return LOCATIONS.find(l=>l.id===this.match?.locationId)?.name??LOCATIONS[0].name;}
   get me(){return this.match?.players.find(p=>p.id===this.playerId)??null;}
   private listen(target:EventTarget,event:string,handler:EventListener,options?:AddEventListenerOptions){target.addEventListener(event,handler,options);this.cleanup.push(()=>target.removeEventListener(event,handler,options));}
   private bind(){
     this.listen(window,'resize',()=>this.resize());
     this.listen(window,'pagehide',()=>{if(this.mode==='online')this.leave();});
-    this.listen(document,'pointerlockchange',()=>{if(this.mode!=='lobby'&&!this.touch){this.setPaused(document.pointerLockElement!==this.canvas);}});
+    this.listen(document,'pointerlockchange',()=>{if(this.mode!=='lobby'&&!this.touch){this.ignoreFirstLockedMovement=document.pointerLockElement===this.canvas;this.setPaused(document.pointerLockElement!==this.canvas);}});
     this.listen(document,'pointerlockerror',()=>{if(this.mode!=='lobby')this.setPaused(true);});
     this.listen(window,'blur',()=>{this.keys.clear();this.shooting=false;if(this.mode!=='lobby')this.pause();});
     this.listen(document,'visibilitychange',()=>{if(document.hidden&&this.mode!=='lobby')this.pause();});
-    this.listen(document,'mousemove',((e:MouseEvent)=>{if(document.pointerLockElement===this.canvas&&!this.paused){this.yaw-=e.movementX*.002*this.settings.sensitivity;this.pitch=THREE.MathUtils.clamp(this.pitch-e.movementY*.002*this.settings.sensitivity,-1.45,1.45);}}) as EventListener);
+    this.listen(document,'mousemove',((e:MouseEvent)=>{if(document.pointerLockElement===this.canvas&&!this.paused){
+      // Chromium may report the cursor's recentering delta immediately after a
+      // menu hands control back. It must not turn a selected landmark into sky.
+      if(this.ignoreFirstLockedMovement){this.ignoreFirstLockedMovement=false;return;}
+      this.yaw-=e.movementX*.002*this.settings.sensitivity;this.pitch=THREE.MathUtils.clamp(this.pitch-e.movementY*.002*this.settings.sensitivity,-1.45,1.45);
+    }}) as EventListener);
     this.listen(window,'keydown',((e:KeyboardEvent)=>{
       if(this.mode==='lobby'||e.target instanceof HTMLInputElement)return;
       if(['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
@@ -111,6 +119,15 @@ export class GameClient {
     this.match=createMatch(now,{locationId:location.id,start:location,exploration});const p=addPlayer(this.match,name||'Operator','blue');this.playerId=p.id;
     if(exploration){p.x=location.x;p.z=location.z;p.yaw=location.yaw;}
     this.mode='solo';this.setupPlayer();if(exploration)this.pitch=location.pitch??0;this.sound.unlock();this.resume();this.emitHUD();
+  }
+  visitPlace(placeId:string,name:string){
+    if(this.mode==='online')return;
+    const place=getPlace(placeId),view=placeViewpoint(placeId);
+    if(!place||!view){this.onError('A safe approach to this place could not be found.');return;}
+    this.startSolo(name,place.sectorId,true);
+    const p=this.me;if(!p)return;
+    p.x=view.x;p.z=view.z;p.yaw=view.yaw;p.pitch=view.pitch;p.intent.yaw=view.yaw;p.intent.pitch=view.pitch;
+    this.setupPlayer();this.pitch=view.pitch;this.visitingPlaceId=place.id;this.emitHUD();
   }
   async startOnline(action:'create'|'join'|'quickjoin',name:string,room?:string,locationId=DEFAULT_LOCATION_ID){
     this.leave();const generation=++this.networkGeneration;
@@ -145,7 +162,7 @@ export class GameClient {
   leave(){
     const oldRoom=this.room,oldToken=this.token;
     if(this.mode==='online'&&oldToken)void fetch('/api/game',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'leave',room:oldRoom,token:oldToken}),keepalive:true}).catch(()=>{});
-    this.networkGeneration++;if(this.pollTimer)clearTimeout(this.pollTimer);this.pollTimer=null;this.mode='lobby';this.lobbyDirty=true;this.paused=false;this.queuedShot=false;this.match=null;this.playerId='';this.room='';this.token='';this.keys.clear();this.shooting=false;this.touchMove={forward:0,strafe:0};this.touchSprint=false;this.touchLook=null;this.scoreboard=false;this.weapon.visible=false;
+    this.networkGeneration++;if(this.pollTimer)clearTimeout(this.pollTimer);this.pollTimer=null;this.mode='lobby';this.visitingPlaceId='';this.lobbyDirty=true;this.paused=false;this.queuedShot=false;this.match=null;this.playerId='';this.room='';this.token='';this.keys.clear();this.shooting=false;this.touchMove={forward:0,strafe:0};this.touchSprint=false;this.touchLook=null;this.scoreboard=false;this.weapon.visible=false;
     for(const p of this.characters.values()){this.scene.remove(p.group);disposeActor(p);}this.characters.clear();
     for(const particle of this.particles){this.scene.remove(particle.mesh);this.disposeObject(particle.mesh);}this.particles=[];
     if(document.pointerLockElement===this.canvas)document.exitPointerLock();this.emitHUD();
@@ -235,12 +252,44 @@ export class GameClient {
       if(c.polygon){ctx.beginPath();c.polygon.forEach((p,i)=>i?ctx.lineTo(px(p.x),pz(p.z)):ctx.moveTo(px(p.x),pz(p.z)));ctx.closePath();ctx.fill();}
       else ctx.fillRect(px(c.x-c.w/2),pz(c.z-c.d/2),c.w*scale,c.d*scale);
     }
+    if(me)for(const place of PLACES){const x=px(place.x),z=pz(place.z);if(x<3||x>w-3||z<3||z>h-3)continue;ctx.fillStyle=PLACE_CATEGORIES.find(c=>c.id===place.category)!.color;ctx.beginPath();ctx.arc(x,z,place.id===this.visitingPlaceId?4:1.8,0,Math.PI*2);ctx.fill();if(place.id===this.visitingPlaceId){ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();}}
     if(!me){ctx.font='bold 10px sans-serif';for(const location of LOCATIONS){ctx.fillStyle='#e9b56e';ctx.beginPath();ctx.arc(px(location.x),pz(location.z),3,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f7f3e9';ctx.fillText(location.name,Math.min(w-125,px(location.x)+6),pz(location.z)-5);}}
     for(const p of players){if(p.health<=0||p.id!==selfId&&me&&p.team!==me.team)continue;
       ctx.fillStyle=p.id===selfId?'#fff':'#70c4d5';ctx.beginPath();ctx.arc(px(p.x),pz(p.z),p.id===selfId?5:3.5,0,Math.PI*2);ctx.fill();
       if(p.id===selfId){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px(p.x),pz(p.z));ctx.lineTo(px(p.x-Math.sin(this.yaw)*8),pz(p.z-Math.cos(this.yaw)*8));ctx.stroke();}
     }
     ctx.fillStyle='#dce9e5';ctx.font='bold 11px sans-serif';ctx.fillText('N ↑',w-30,17);
+  }
+  drawPlaceMap(canvas:HTMLCanvasElement,placeId?:string){
+    const ctx=canvas.getContext('2d');if(!ctx)return;
+    const selected=getPlace(placeId),w=canvas.width,h=canvas.height;
+    const scale=selected?Math.min(w/340,h/250):Math.min(w/(MAP_BOUNDS.maxX-MAP_BOUNDS.minX+100),h/(MAP_BOUNDS.maxZ-MAP_BOUNDS.minZ+100));
+    const px=(x:number)=>(x-(selected?.x??0))*scale+w/2,pz=(z:number)=>(z-(selected?.z??0))*scale+h/2;
+    ctx.fillStyle='#152b2b';ctx.fillRect(0,0,w,h);
+    for(const road of ROADS){ctx.strokeStyle='#526963';ctx.lineWidth=Math.max(1,road.width*scale);ctx.lineJoin='round';ctx.beginPath();road.points.forEach((p,i)=>i?ctx.lineTo(px(p.x),pz(p.z)):ctx.moveTo(px(p.x),pz(p.z)));ctx.stroke();}
+    ctx.fillStyle='#8a9380';
+    for(const b of COLLIDERS){if(px(b.x+b.w/2)<0||px(b.x-b.w/2)>w||pz(b.z+b.d/2)<0||pz(b.z-b.d/2)>h)continue;
+      if(b.polygon){ctx.beginPath();b.polygon.forEach((p,i)=>i?ctx.lineTo(px(p.x),pz(p.z)):ctx.moveTo(px(p.x),pz(p.z)));ctx.closePath();ctx.fill();}
+      else ctx.fillRect(px(b.x-b.w/2),pz(b.z-b.d/2),b.w*scale,b.d*scale);
+    }
+    const visible=PLACES.filter(p=>px(p.x)>8&&px(p.x)<w-8&&pz(p.z)>8&&pz(p.z)<h-8);
+    const occupied:{x:number;y:number;w:number;h:number}[]=[];
+    const label=(value:string,x:number,y:number,important=false)=>{
+      ctx.font=`${important?'bold ':''}${important?15:12}px sans-serif`;
+      const text=value.length>39?value.slice(0,37)+'…':value,bw=Math.min(w-20,ctx.measureText(text).width+14),bh=important?27:23;
+      const box={x:Math.max(5,Math.min(w-bw-5,x+9)),y:Math.max(5,Math.min(h-bh-28,y-29)),w:bw,h:bh};
+      if(!important&&occupied.some(b=>box.x<b.x+b.w+5&&box.x+box.w+5>b.x&&box.y<b.y+b.h+5&&box.y+box.h+5>b.y))return;
+      occupied.push(box);ctx.fillStyle=important?'#f3d77c':'#163435e8';ctx.fillRect(box.x,box.y,box.w,box.h);ctx.fillStyle=important?'#182e2d':'#f7f3e9';ctx.fillText(text,box.x+7,box.y+bh-8);
+    };
+    if(selected)label(selected.name,px(selected.x),pz(selected.z),true);
+    for(const place of visible){const x=px(place.x),y=pz(place.z),active=selected?.id===place.id;
+      ctx.fillStyle=PLACE_CATEGORIES.find(c=>c.id===place.category)!.color;ctx.beginPath();ctx.arc(x,y,active?7:selected?3.7:2.5,0,Math.PI*2);ctx.fill();
+      if(active){ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke();}
+      else if(selected)label(place.name,x,y);
+    }
+    const view=selected&&placeViewpoint(selected.id);
+    if(view){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(px(view.x),pz(view.z),5,0,Math.PI*2);ctx.stroke();}
+    const metres=selected?50:250,line=metres*scale;ctx.fillStyle='#102825dc';ctx.fillRect(10,h-34,line+20,25);ctx.strokeStyle='#fff3d1';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(20,h-17);ctx.lineTo(20+line,h-17);ctx.stroke();ctx.fillStyle='#fff3d1';ctx.font='11px sans-serif';ctx.fillText(`${metres} m`,25,h-21);
   }
   disposeObject(object:THREE.Object3D){object.traverse(o=>{if(o instanceof THREE.Mesh||o instanceof THREE.Line){o.geometry.dispose();const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>m.dispose());}});}
   dispose(){this.leave();clearInterval(this.simulationTimer);cancelAnimationFrame(this.frame);this.cleanup.forEach(f=>f());this.world.dispose();this.weaponView.dispose();this.particles.forEach(p=>this.disposeObject(p.mesh));this.sound.dispose();this.renderer.dispose();delete (window as unknown as Record<string,unknown>).__NANDED_DEBUG__;}
