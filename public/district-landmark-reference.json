@@ -1,0 +1,246 @@
+{
+  "reviewedAt": "2026-10-16",
+  "method": "Original mesh relief recreated from inspected photographs and street imagery, with public business/campus locations cross-checked against the map. Existing main building polygons are retained. Two older Amrut forecourt roof fragments are explicitly superseded in the derived game map; raw source polygons remain archived unchanged. Heights, facade alignments, store tenancy extents and compressed details are estimates, not measured architecture. No source photographs are redistributed.",
+  "models": [
+    {
+      "id": "nanded-pharmacy",
+      "name": "Nanded Pharmacy College",
+      "category": "education",
+      "coordinate": {
+        "latitude": 19.175868,
+        "longitude": 77.307992
+      },
+      "officialLocation": "https://nandedpharmacycollege.org/",
+      "photoPage": "https://nandedpharmacycollege.org/images/sli.jpg",
+      "photo": "https://nandedpharmacycollege.org/images/sli.jpg",
+      "modelStatus": "photo-referenced",
+      "visualReference": "Official college photograph, capture date unavailable",
+      "observed": [
+        "Cream two-storey walls",
+        "Black barred windows",
+        "Broad white nameboard over portico",
+        "Terracotta portico columns and edge bands"
+      ],
+      "crossCheck": "https://nandedpharmacycollege.org/admin/uploads/criteria3/3_2_2.pdf",
+      "buildingId": "a301beaa-6aae-4534-9c11-d16c7ac02080",
+      "footprintStatus": "Existing source polygon retained without edits",
+      "placementCaveat": "College geotag 19.175868,77.307992 identifies campus; nearest major campus footprint west edge used. Portico is an estimated 24m portion of the retained 49m edge.",
+      "estimated": {
+        "heightMetres": 8.4,
+        "facadeWidthMetres": 24,
+        "facadePosition": {
+          "x": -321.001,
+          "z": -169.674,
+          "yaw": -1.470885
+        }
+      },
+      "viewpoint": {
+        "x": -340.3765,
+        "z": -202.0224,
+        "yaw": -2.6057
+      }
+    },
+    {
+      "id": "grand-tulsi",
+      "name": "Hotel Grand Tulsi",
+      "category": "hotel",
+      "coordinate": {
+        "latitude": 19.1748063,
+        "longitude": 77.3131097
+      },
+      "officialLocation": "https://www.google.com/maps?cid=15162140821138501614",
+      "photoPage": "https://r1imghtlak.mmtcdn.com/080e799624a611eab0bc0242ac110002.jpg",
+      "photo": "https://r1imghtlak.mmtcdn.com/080e799624a611eab0bc0242ac110002.jpg",
+      "modelStatus": "photo-referenced",
+      "visualReference": "Hotel property photograph, capture date unavailable",
+      "observed": [
+        "Large reflective dark-glass planes",
+        "Left-side timber-coloured vertical fins",
+        "White lattice band across middle",
+        "Wood-coloured name fascia"
+      ],
+      "crossCheck": "https://www.makemytrip.com/hotels/photos-of-tulsi_comfort-details-nanded.html",
+      "buildingId": "251cb0d9-6abe-49af-aa41-d46c4e482fac",
+      "footprintStatus": "Existing source polygon retained without edits",
+      "placementCaveat": "Google Maps business point lies at the short street-facing edge of the matched footprint. Old photograph says Tulsi Comfort; current place name is Hotel Grand Tulsi. New text uses current listing; facade form may predate renovations.",
+      "estimated": {
+        "heightMetres": 20.4,
+        "facadeWidthMetres": 16.3011,
+        "facadePosition": {
+          "x": 204.6171,
+          "z": -55.5225,
+          "yaw": -0.565882
+        }
+      },
+      "viewpoint": {
+        "x": 189.8765,
+        "z": -45.1578,
+        "yaw": -0.957968
+      }
+    },
+    {
+      "id": "amrut-cafe",
+      "name": "Amrut Cafe",
+      "category": "food",
+      "coordinate": {
+        "latitude": 19.1734942,
+        "longitude": 77.3150503
+      },
+      "officialLocation": "https://www.google.com/maps?cid=13213604312182751305",
+      "photoPage": "https://www.google.com/maps/place/Amrut+Cafe/@19.1734942,77.3150503,3a,75y,90t/data=!3m4!1e2!3m2!1sCIABIhBd3_Ge5XqfRgFEaZ23zpZf!2e10",
+      "photo": "https://www.google.com/maps/place/Amrut+Cafe/@19.1734942,77.3150503,3a,75y,90t/data=!3m4!1e2!3m2!1sCIABIhBd3_Ge5XqfRgFEaZ23zpZf!2e10",
+      "modelStatus": "photo-referenced",
+      "visualReference": "Google Maps exterior photograph by Sandesh Potare, August 2026",
+      "observed": [
+        "Cream two-storey rectangular outer frame",
+        "Lower glass frontage",
+        "Upper dark grille and planter balcony",
+        "Cream arched entry and brown steps"
+      ],
+      "crossCheck": "https://www.zomato.com/nanded/amrut-cafe-nanded-locality/menu",
+      "buildingId": "c3cd1489-39f0-41c5-871a-a1b8afc0a020",
+      "footprintStatus": "Existing source polygon retained without edits",
+      "placementCaveat": "The source place pin falls on the forecourt. May 2025 street imagery shows a new single-bay structure under construction beside MedPlus; the August 2026 photo shows the completed cream cafe. The main retained footprint has an 8.10m street edge. Two older small roof polygons in the now-open forecourt are excluded only from the derived render/collision map. Exact depth and alignment remain estimates.",
+      "estimated": {
+        "heightMetres": 7.6,
+        "facadeWidthMetres": 8.0967,
+        "facadePosition": {
+          "x": 413.8033,
+          "z": 80.9283,
+          "yaw": -0.548257
+        }
+      },
+      "viewpoint": {
+        "x": 408.6349,
+        "z": 105.817,
+        "yaw": -0.20475
+      },
+      "constructionPhoto": "https://www.google.com/maps/@?api=1&map_action=pano&pano=oxSHkzkw67R0cHyqPh8wNw&heading=25&pitch=9&fov=95"
+    },
+    {
+      "id": "panasonic-living",
+      "name": "Panasonic Living Store",
+      "category": "shop",
+      "coordinate": {
+        "latitude": 19.1797134,
+        "longitude": 77.3051464
+      },
+      "officialLocation": "https://www.google.com/maps/@?api=1&map_action=pano&pano=R3AsTqDpNPGzdoJjIDzt_Q&heading=270&pitch=12&fov=85",
+      "photoPage": "https://www.google.com/maps/@?api=1&map_action=pano&pano=R3AsTqDpNPGzdoJjIDzt_Q&heading=270&pitch=12&fov=85",
+      "photo": "https://www.google.com/maps/@?api=1&map_action=pano&pano=R3AsTqDpNPGzdoJjIDzt_Q&heading=270&pitch=12&fov=85",
+      "modelStatus": "photo-referenced",
+      "visualReference": "Google Street View, May 2025",
+      "observed": [
+        "Tall grey-blue glazing",
+        "Blue Panasonic fascia",
+        "White Panasonic Living STORE strip",
+        "Raised glazed shop entrance and broad stair"
+      ],
+      "crossCheck": "https://www.google.com/maps/@?api=1&map_action=pano&pano=R3AsTqDpNPGzdoJjIDzt_Q&heading=270&pitch=12&fov=85",
+      "buildingId": "5cc82083-32f2-47bf-bd02-8f797dc840ec",
+      "footprintStatus": "Existing source polygon retained without edits",
+      "placementCaveat": "Directly west of panorama camera 19.1797091,77.305216. A 7.3m portion of the east edge is used; shared-building tenancy boundary and height are estimates.",
+      "estimated": {
+        "heightMetres": 11.4,
+        "facadeWidthMetres": 7.3,
+        "facadePosition": {
+          "x": -625.9834,
+          "z": -602.6206,
+          "yaw": 1.60459
+        }
+      },
+      "viewpoint": {
+        "x": -618.6696,
+        "z": -602.141,
+        "yaw": 1.5053
+      }
+    },
+    {
+      "id": "tekisky-workshop",
+      "name": "Tekisky",
+      "category": "service",
+      "coordinate": {
+        "latitude": 19.1797365,
+        "longitude": 77.3052676
+      },
+      "officialLocation": "https://tekisky.com/consultancy",
+      "photoPage": "https://www.google.com/maps/@?api=1&map_action=pano&pano=R3AsTqDpNPGzdoJjIDzt_Q&heading=90&pitch=20&fov=95",
+      "photo": "https://www.google.com/maps/@?api=1&map_action=pano&pano=R3AsTqDpNPGzdoJjIDzt_Q&heading=90&pitch=20&fov=95",
+      "modelStatus": "photo-referenced",
+      "visualReference": "Google Street View, May 2025",
+      "observed": [
+        "Cream walls with terracotta upper projection",
+        "Grey metal shutters and lattice security doors",
+        "White-and-blue Tekisky boards"
+      ],
+      "crossCheck": "https://tekisky.com/consultancy",
+      "buildingId": "fa24bb39-d9bd-4bda-a1d2-2f9dec93b4f9",
+      "footprintStatus": "Existing source polygon retained without edits",
+      "placementCaveat": "Directly east of panorama camera 19.1797091,77.305216; official company address corroborates Workshop Corner. Full storefront extent on the unchanged west edge is estimated; neighbouring residential detailing simplified.",
+      "estimated": {
+        "heightMetres": 10.2,
+        "facadeWidthMetres": 11.5466,
+        "facadePosition": {
+          "x": -613.245,
+          "z": -605.1873,
+          "yaw": -1.537014
+        }
+      },
+      "viewpoint": {
+        "x": -618.6696,
+        "z": -602.141,
+        "yaw": -1.0593
+      }
+    }
+  ],
+  "notModelled": [
+    {
+      "name": "Jockey Exclusive Store, Bhagya Nagar",
+      "coordinate": {
+        "latitude": 19.176235,
+        "longitude": 77.310738
+      },
+      "source": "https://stores.jockey.in/jockey-exclusive-store-bhagya-nagar-nanded-46340/home",
+      "reason": "Official location and September 2026 exterior photograph inspected, but entrance pin does not match a clear existing footprint. Omitted rather than assign to a potentially wrong building."
+    },
+    {
+      "name": "Kake Di Hatti - Nanded",
+      "coordinate": {
+        "latitude": 19.1707222,
+        "longitude": 77.3186252
+      },
+      "source": "https://www.google.com/maps/search/Kake+Di+Hatti+Nanded",
+      "reason": "Current Google Maps listing reports permanently closed, despite brand store locator retaining Anand Nagar address. Not presented as an active business."
+    },
+    {
+      "name": "Workshop Corner water tank",
+      "source": "https://tekisky.com/consultancy",
+      "reason": "Multiple local addresses attest the landmark, but no exact mapped tank footprint or adequately located tank photograph was confirmed. No generic tower was substituted."
+    },
+    {
+      "name": "China Town Fast Food Centre, Workshop Corner",
+      "coordinate": {
+        "latitude": 19.1799376,
+        "longitude": 77.3040955
+      },
+      "source": "https://www.google.com/maps/search/China+Town+Fast+Food+Centre+Nanded",
+      "reason": "Inspected October 2021 storefront photograph, but current point falls between mapped footprints and street imagery does not confidently identify the same tenancy. Retained as a listed place; no guessed facade attached."
+    }
+  ],
+  "sourceFootprintOverrides": [
+    {
+      "id": "66020beb-6d0b-4699-afba-ab1680d32592",
+      "action": "omit-from-derived-map",
+      "rawSourceRetained": true,
+      "reason": "Older roof fragment on the cleared Amrut construction forecourt, visible as open construction area in May 2025 and completed entrance forecourt in August 2026.",
+      "referenceModelId": "amrut-cafe"
+    },
+    {
+      "id": "1c5fdea9-4c10-4ec9-9ad1-82c8888f3f36",
+      "action": "omit-from-derived-map",
+      "rawSourceRetained": true,
+      "reason": "Older roof fragment on the cleared Amrut construction forecourt, visible as open construction area in May 2025 and completed entrance forecourt in August 2026.",
+      "referenceModelId": "amrut-cafe"
+    }
+  ]
+}

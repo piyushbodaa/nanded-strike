@@ -1,5 +1,5 @@
 {
-  "title": "Nanded: Bhagya Nagar to Baba Nagar — geographic source notes",
+  "title": "Nanded neighbourhoods: Bhagya Nagar, Workshop Corner, Anand Nagar, Shri Nagar and Yashwant College Road",
   "generated": "2026-10-16",
   "projection": {
     "latitude": 19.1743,
@@ -17,9 +17,9 @@
     "north": 19.1808
   },
   "coverage": "Approximately 1.96 km east–west by 1.45 km north–south. Locality names identify starting sectors, not surveyed administrative boundaries.",
-  "actualGeometry": "425 clipped OSM street paths; 5,887 Overture building footprints; 13 mapped campus, park or ground surfaces. One game unit represents one metre. Street bends, intersections, building positions and footprints retain their geographic coordinates.",
-  "illustrativeElements": "Building heights (no measured heights supplied), facade colours, windows, doors, roof parapets, road widths, surface materials, road markings, wayfinding signs and lighting are approximate visual treatments. Two landmarks have custom photo-referenced meshes: Bhagya Nagar Kaman and Yeshwant College entrance. Their dimensions, sculptural details and exact frontage offsets are estimated; see /landmark-reference.json. Other named campuses remain source-footprint massing with illustrative facades. No claim of photographic or surveyed architectural reconstruction.",
-  "navigation": "4,550 base road waypoints are retained after clearance checks against eleven new landmark ground colliders. Bhagya Nagar Explore begins about14m south of Kaman, facing the structure; Baba Nagar faces the college gate. Multiplayer team starts use separately validated road clusters.",
+  "actualGeometry": "425 clipped OSM street paths; 5,887 source building outlines; 13 mapped campus, park or ground surfaces. 5,885 buildings are displayed after two superseded Amrut forecourt pieces were omitted using newer photographic evidence. All original polygons remain in the source dataset. One game unit represents one metre; road geometry remains unchanged.",
+  "illustrativeElements": "Building heights, facade colours, windows, doors, parapets, road widths, materials, markings, signs and lighting are estimated. Ten landmarks have custom photo-referenced exteriors; dimensions and exact frontage offsets remain estimates. Other place signs are illustrative map labels, not photographed shopfronts. References: /landmark-reference.json and /district-landmark-reference.json.",
+  "navigation": "4550 retained road waypoints with clearance checks against 19 landmark colliders. Solo place visits choose walkable public-road approaches. Multiplayer team starts use separately validated, occluded road clusters.",
   "excludedSolid": {
     "id": "ad3d1cff-5412-4bec-8368-268cc5068f05",
     "osmId": "way/1162009048",
@@ -146,7 +146,16 @@
     "Yeshwant College entrance",
     "IIB Parnakuti",
     "RCC Coaching",
-    "Konale NEET Center"
+    "Konale NEET Center",
+    "Nanded Pharmacy College",
+    "Hotel Grand Tulsi",
+    "Amrut Cafe",
+    "Panasonic Living Store",
+    "Tekisky"
   ],
-  "streetDetail": "Estimated rooftop water tanks and street-facing shutters, shade canopies and AC units decorate retained footprints; these fittings are not mapped measurements. Coaching facade placement and height caveats are in landmark-reference.json."
+  "streetDetail": "Estimated windows and doors cover all displayed building footprints, culled by distance. Rooftop tanks, shutters, shade canopies and AC units are stylized. Source-matched building labels are illustrative; low-confidence, shared-coordinate and unmatched pins stay on the map/directory. The source datasets do not constitute a complete current business survey.",
+  "districtLandmarkReference": "/district-landmark-reference.json",
+  "placeReference": "/place-reference.json",
+  "placeCount": 575,
+  "displayedBuildings": 5885
 }

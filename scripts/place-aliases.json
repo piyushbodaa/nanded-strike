@@ -1,0 +1,16 @@
+{
+  "method": "Manually reviewed pairs of matching names or public telephone numbers at nearby source coordinates. Distinct bank/ATM services, separate branches and uncertain aliases are retained separately. Original coordinates and names remain in place-source.json.",
+  "pairs": [
+    {"keep":"overture:dfe651c3-5bc2-4c74-a414-e1f34c7b6614","merge":"osm:node/11691361032","reason":"Same public telephone number and Apple retailer at source points 21m apart; Overture gives the more specific eSpace reseller name."},
+    {"keep":"osm:node/11698434149","merge":"overture:fa677e52-7274-4a9e-941f-f4a79db5e671","reason":"Same public telephone number and HP World name; coordinates 9m apart."},
+    {"keep":"osm:node/11691298642","merge":"overture:8ec0f2e1-4e0b-4392-a38a-acb40e1262da","reason":"Titan World name plus ITI Corner locality suffix; coordinates 5m apart."},
+    {"keep":"osm:node/11691405925","merge":"overture:b0f4ae7a-3a2e-4817-9761-168966ea8f61","reason":"Atmosphere restaurant name; longer Overture description at point14m away."},
+    {"keep":"osm:way/1257912812","merge":"overture:e6f3cb36-8954-44f8-b2f7-03392030def2","reason":"ICICI Bank VIP Road branch descriptor beside the mapped ICICI building; points 20m apart."},
+    {"keep":"osm:node/11145796239","merge":"overture:b26c05c6-1790-42e5-9fcf-0de39f5f5ad7","reason":"Kolhapuri Saaj restaurant with and without descriptive suffix; points 21m apart."},
+    {"keep":"overture:6c70ecca-1e4a-467c-82df-6522898e2696","merge":"overture:dca31610-7b0e-447c-ae89-54f73fd10833","reason":"Monginis with and without Cake Shop suffix; points 6m apart. Higher source confidence retained."},
+    {"keep":"overture:1614b01f-3c13-4987-8514-1f2bfb648881","merge":"overture:ba816ae8-d21d-4ba9-8ad6-0759ce643c72","reason":"Moraya Dental Clinic with cinic typo in alternate listing; points 10m apart."},
+    {"keep":"osm:way/1567536003","merge":"overture:3bc7d9a4-321a-41a1-a1d6-1e978ab77261","reason":"Rajarshi Shahu Vidyalaya Ground versus Rajashri Shahu High School Ground transliteration; points 4m apart."},
+    {"keep":"osm:node/7635002034","merge":"overture:775ea1ec-7d72-4405-bcfb-81c28629e3c6","reason":"Shri/Shree Durga Hospital transliteration; same Vasant Nagar address and points 29m apart."},
+    {"keep":"osm:node/7635002086","merge":"overture:74992877-0347-478a-a868-e44abf884457","reason":"Shri Varad Studio Dental Implant Clinic with and without Institute suffix; points 17m apart."}
+  ]
+}

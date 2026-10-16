@@ -90,7 +90,7 @@ export const LOCATIONS: MapLocation[] = [
   }
 ];
 // Photo-referenced institutions get public-road viewpoints, never spawns inside a building.
-for(const landmark of LANDMARKS.filter(l=>l.buildingId))LOCATIONS.push({
+for(const landmark of LANDMARKS.filter(l=>l.buildingId&&!LOCATIONS.some(location=>location.id===l.locationId)))LOCATIONS.push({
  id:landmark.locationId,name:landmark.name,label:landmark.name,
  ...landmark.viewpoint,pitch:Math.atan2((landmark.height??10)*.46-1.58,Math.hypot(landmark.viewpoint.x-landmark.x,landmark.viewpoint.z-landmark.z)),description:landmark.description,latitude:landmark.latitude,longitude:landmark.longitude,sourceOffsetMetres:Math.round(Math.hypot(landmark.viewpoint.x-(landmark.longitude-77.3111)*111320*Math.cos(19.1743*Math.PI/180),landmark.viewpoint.z+(landmark.latitude-19.1743)*111320)*10)/10,
 });

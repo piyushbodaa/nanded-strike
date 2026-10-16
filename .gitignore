@@ -63,3 +63,7 @@ next-env.d.ts
 /.openai/
 
 !.env.example
+
+# Python source builders
+__pycache__/
+*.pyc

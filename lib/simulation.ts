@@ -46,7 +46,7 @@ export const WEAPONS = {
   knife: { name: "Knife", magazine: 0, reserve: 0, damage: 55, interval: 550, reload: 0, range: 2.2 },
 } as const;
 const ZERO_INPUT: Input = { forward: 0, strafe: 0, yaw: 0, pitch: 0, shoot: false, reload: false, sprint: false, jump: false, seq: -1 };
-export const RULESET_VERSION = 4;
+export const RULESET_VERSION = 5;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const distance = (a: {x:number;z:number}, b: {x:number;z:number}) => Math.hypot(a.x-b.x,a.z-b.z);
 const finite = (v: unknown, fallback = 0) => typeof v === "number" && Number.isFinite(v) ? v : fallback;

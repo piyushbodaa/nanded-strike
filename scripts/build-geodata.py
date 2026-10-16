@@ -138,11 +138,17 @@ for id,name,label,lat,lon,description,yaw in anchors:
 
 data={'bounds':{'minX':round(xmin,2),'maxX':round(xmax,2),'minZ':round(zmin,2),'maxZ':round(zmax,2)},'roads':roads,'buildings':buildings,'surfaces':surfaces,'waypoints':[point(p) for p in waypoints]}
 (ROOT/'lib/geodata.json').write_text(json.dumps(data,separators=(',',':')))
-locations_ts='''/** Verified public-road starting sectors. Locality labels are not surveyed boundaries.
+locations_ts='''import { LANDMARKS } from './landmark-data';
+/** Verified public-road starting sectors. Locality labels are not surveyed boundaries.
  * x=east, -z=north; projected at 19.1743N, 77.3111E. Source: /map-reference.json. */
-export type MapLocation = {id:string;name:string;label:string;x:number;z:number;yaw:number;description:string;latitude:number;longitude:number;sourceOffsetMetres:number};
+export type MapLocation = {id:string;name:string;label:string;x:number;z:number;yaw:number;pitch?:number;description:string;latitude:number;longitude:number;sourceOffsetMetres:number};
 export const DEFAULT_LOCATION_ID = 'bhagya';
 export const LOCATIONS: MapLocation[] = '''+json.dumps(locations,ensure_ascii=False,indent=2)+''';
+// Photo-referenced institutions get public-road viewpoints, never spawns inside a building.
+for(const landmark of LANDMARKS.filter(l=>l.buildingId&&!LOCATIONS.some(location=>location.id===l.locationId)))LOCATIONS.push({
+ id:landmark.locationId,name:landmark.name,label:landmark.name,
+ ...landmark.viewpoint,pitch:Math.atan2((landmark.height??10)*.46-1.58,Math.hypot(landmark.viewpoint.x-landmark.x,landmark.viewpoint.z-landmark.z)),description:landmark.description,latitude:landmark.latitude,longitude:landmark.longitude,sourceOffsetMetres:Math.round(Math.hypot(landmark.viewpoint.x-(landmark.longitude-77.3111)*111320*Math.cos(19.1743*Math.PI/180),landmark.viewpoint.z+(landmark.latitude-19.1743)*111320)*10)/10,
+});
 export const LOCATION = {name:'Nanded neighbourhoods',city:'Nanded',latitude:19.1743,longitude:77.3111,source:'/map-reference.json'};
 '''
 (ROOT/'lib/locations.ts').write_text(locations_ts)

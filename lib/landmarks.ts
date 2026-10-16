@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LANDMARKS } from './landmark-data';
 import { drawIibFacade } from './iib-facade';
 import { drawKonaleFacade, drawRccFacade } from './coaching-facades';
+import { drawDistrictFacade } from './district-facades';
 
 /** Photo-referenced exterior structures, isolated from the geographic base renderer.
  * Original mesh construction; no copyrighted source photo is bundled or used as a decal. */
@@ -102,7 +103,7 @@ export function createLandmarks() {
   if(landmark.buildingId) {
    const draw={box,text,rail};
    const facade=landmark.id==='iib-parnakuti'?drawIibFacade:landmark.id==='konale-neet'?drawKonaleFacade:drawRccFacade;
-   facade(landmark.facadeWidth!,landmark.height!,draw);
+   if(!drawDistrictFacade(landmark.id,landmark.facadeWidth!,landmark.height!,draw))facade(landmark.facadeWidth!,landmark.height!,draw);
   }
   for(const [m,geometries] of batches){const merged=mergeGeometries(geometries,false);for(const geo of geometries)geo.dispose();if(!merged)continue;const mesh=new THREE.Mesh(merged,m);mesh.castShadow=true;mesh.receiveShadow=true;local.add(mesh);resources.push(merged);}
  }
