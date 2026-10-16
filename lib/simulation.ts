@@ -146,9 +146,9 @@ function makePlayer(match: Match, name: string, team: Team, bot: boolean): Playe
     botTarget:-1,botDecisionAt:0,nextBotShotAt:0 };
   match.players.push(player); spawn(match,player);
   if(match.mode==="classic"){
-    resetClassicEquipment(player);
-    if(match.classic?.phase!=="waiting"){player.health=0;player.respawnAt=0;event(match,"notice",player,{text:"You will join at the start of the next round."});}
-    else if(hasBothTeams(match))startClassicRound(match);
+    resetClassicEquipment(player);player.invulnerableUntil=0;
+    if(match.classic?.phase==="live"||match.classic?.phase==="over"){player.health=0;player.respawnAt=0;event(match,"notice",player,{text:"You will join at the start of the next round."});}
+    else if(match.classic?.phase==="waiting"&&hasBothTeams(match))startClassicRound(match);
   }
   return player;
 }
@@ -312,7 +312,7 @@ function updateBomb(match:Match) {
   }
   if(bomb.action){
     const action=bomb.action,player=match.players.find(candidate=>candidate.id===action.playerId);
-    const valid=player&&holding(player)&&distance(player,action)<.45&&player.y===0&&!player.intent.shoot&&!player.intent.secondary&&
+    const valid=player&&holding(player)&&player.reloadUntil===0&&distance(player,action)<.45&&player.y===0&&!player.intent.shoot&&!player.intent.secondary&&
       (action.type==="plant"?bomb.status==="carried"&&bomb.carrierId===player.id&&action.completesAt<=state.phaseEndsAt&&state.sites.some(site=>distance(player,site)<=site.radius):
         bomb.status==="planted"&&player.team==="blue"&&distance(player,bomb)<=3&&unobstructed(player.x,player.y+playerEyeHeight(player),player.z,bomb.x,.2,bomb.z));
     if(!valid)delete bomb.action;
@@ -329,7 +329,7 @@ function updateBomb(match:Match) {
     }
   }
   if(!bomb.action&&state.phase==="live"){
-    const actor=match.players.find(player=>holding(player)&&player.y===0&&!player.intent.shoot&&!player.intent.secondary&&
+    const actor=match.players.find(player=>holding(player)&&player.reloadUntil===0&&player.y===0&&!player.intent.shoot&&!player.intent.secondary&&
       (bomb.status==="carried"?player.id===bomb.carrierId&&player.team==="orange"&&match.time+PLANT_TIME<=state.phaseEndsAt&&state.sites.some(site=>distance(player,site)<=site.radius):
         bomb.status==="planted"&&player.team==="blue"&&distance(player,bomb)<=3&&unobstructed(player.x,player.y+playerEyeHeight(player),player.z,bomb.x,.2,bomb.z)));
     if(actor){

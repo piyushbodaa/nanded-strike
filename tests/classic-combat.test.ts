@@ -111,8 +111,9 @@ test("classic kills award frags and money but round wins alone change the team s
 
 test("late joiners spectate until the next round, survivors keep gear and dead players reset",()=>{
   const {match,blue,orange}=classic();blue.money=5000;send(match,blue,{buy:"rifle"});send(match,blue,{buy:"armor"});send(match,blue,{buy:"kit"});
+  advanceMatch(match,START+CLASSIC_FREEZE_TIME+1);
   const late=addPlayer(match,"LATE","blue");assert.equal(late.health,0);
-  advanceMatch(match,START+CLASSIC_FREEZE_TIME+1);orange.health=0;advanceMatch(match,match.time+1);
+  orange.health=0;advanceMatch(match,match.time+1);
   assert.equal(match.classic?.phase,"over");advanceMatch(match,match.classic!.phaseEndsAt+1);
   assert.equal(match.round,2);assert.equal(match.classic?.phase,"freeze");assert.equal(late.health,100);
   assert.ok(blue.inventory.includes("rifle"));assert.equal(blue.armor,100);assert.equal(blue.defuseKit,true);
@@ -257,4 +258,30 @@ test("classic migration keeps human identity and mode while rebuilding determini
   advanceMatch(persisted,START+CLASSIC_FREEZE_TIME+1);advanceMatch(restored,START+CLASSIC_FREEZE_TIME+1);
   assert.deepEqual(restored,persisted);
   assert.equal(PURCHASES.sniper.price,4750);
+});
+
+
+test("friends joining during buy time enter the same round without resetting its timer or purchases",()=>{
+  const {match,blue,orange}=classic();send(match,blue,{buy:"kit"});
+  const deadline=match.classic!.phaseEndsAt,carrier=match.classic!.bomb.carrierId;
+  advanceMatch(match,deadline-500);
+  const third=addPlayer(match,"THIRD","blue"),fourth=addPlayer(match,"FOURTH","orange");
+  for(const player of [third,fourth]){assert.equal(player.health,100);assert.equal(canBuy(match,player),true);assert.equal(player.invulnerableUntil,0);}
+  assert.equal(match.classic!.phaseEndsAt,deadline);assert.equal(match.classic!.bomb.carrierId,carrier);assert.equal(carrier,orange.id);
+  assert.equal(blue.money,400);assert.equal(blue.defuseKit,true);assert.equal(match.round,1);
+  advanceMatch(match,deadline+1);assert.ok(match.players.every(player=>player.health===100));
+  assert.equal(addPlayer(match,"LIVE JOIN","blue").health,0);
+});
+
+test("reloading prevents a new plant and cancels defusing until the weapon is ready",()=>{
+  const {match,blue,orange}=classic(true),site=match.classic!.sites[0];
+  Object.assign(orange,{x:site.x,z:site.z,ammo:11});send(match,orange,{reload:true,interact:true});
+  assert.ok(orange.reloadUntil>match.time);assert.equal(match.classic!.bomb.action,undefined);
+  hold(match,orange,1000,{interact:true});assert.equal(match.classic!.bomb.action,undefined);
+  hold(match,orange,PLANT_TIME+500,{interact:true});assert.equal(match.classic!.bomb.status,"planted");
+  Object.assign(blue,{x:site.x,z:site.z,ammo:11});send(match,blue,{interact:true});
+  assert.equal(snapshot(match).classic!.bomb.action?.type,"defuse");
+  send(match,blue,{interact:true,reload:true});assert.equal(match.classic!.bomb.action,undefined);
+  hold(match,blue,1000,{interact:true});assert.equal(match.classic!.bomb.action,undefined);
+  hold(match,blue,400,{interact:true});assert.equal(snapshot(match).classic!.bomb.action?.type,"defuse");
 });
