@@ -36,6 +36,7 @@ async function createPage(name,viewport,touch=false){
   await expect(page.getByRole('button',{name:/SHARP/})).toHaveAttribute('aria-pressed','true');
   await click(page,page.getByRole('button',{name:/PERFORMANCE/}));
   await click(page,page.getByTestId('close-settings'));
+  await click(page,page.getByTestId('mode-deathmatch'));
   return page;
 }
 async function enter(page){

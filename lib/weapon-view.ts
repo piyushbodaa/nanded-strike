@@ -5,6 +5,10 @@ import type { Weapon } from './simulation';
 export interface WeaponPose {
   weapon: Weapon; time: number; shotAt: number; reloadUntil: number;
   reloadDuration: number; speed: number; sprint: boolean; alive: boolean;
+  /** Smoothed aim transition supplied by the camera controller, from hip fire to sights. */
+  aim?: number;
+  /** The last knife attack was a secondary forward stab rather than a primary slash. */
+  secondary?: boolean;
 }
 const ease=(x:number)=>{const t=THREE.MathUtils.clamp(x,0,1);return t*t*(3-2*t);};
 
@@ -25,7 +29,7 @@ export function createWeaponView(camera:THREE.Camera) {
   const grip=box(rifle,.082,.18,.105,0,-.137,.003,polymer);grip.rotation.x=-.23;
   box(rifle,.018,.085,.14,-.051,-.089,-.09,steel);box(rifle,.018,.085,.14,.051,-.089,-.09,steel);box(rifle,.10,.017,.14,0,-.13,-.09,steel);
   const trigger=box(rifle,.013,.055,.018,0,-.085,-.07,steel);trigger.rotation.x=-.3;
-  const rifleMagazine=new THREE.Group();rifleMagazine.position.set(0,-.15,-.18);rifle.add(rifleMagazine);
+  const rifleMagazine=new THREE.Group();rifleMagazine.name='AR30 magazine';rifleMagazine.position.set(0,-.15,-.18);rifle.add(rifleMagazine);
   box(rifleMagazine,.073,.235,.12,0,-.06,0,steel);box(rifleMagazine,.08,.023,.13,0,-.18,0,polymer);
   for(let n=0;n<3;n++)box(rifleMagazine,.077,.008,.112,0,-.03-n*.055,0,receiver,.002);
   const bolt=box(rifle,.018,.032,.105,.058,.012,-.08,steel);
@@ -34,12 +38,36 @@ export function createWeaponView(camera:THREE.Camera) {
   box(rifle,.065,.10,.025,0,.12,-.79,steel);box(rifle,.032,.018,.065,0,.171,-.79,steel);
   box(rifle,.08,.065,.055,0,.14,.01,steel);box(rifle,.035,.035,.058,0,.169,.01,rubber);
   for(let n=0;n<3;n++)box(rifle,.002,.01,.029,.054,-.008+n*.016,-.12,marking,.001);
+  // An original compact optic makes the rifle's zoom capability visible before aiming.
+  // The bore runs along local -Z at Y=.214; the aimed pose brings that line onto the camera.
+  const optic=new THREE.Group();optic.name='AR30 optic';optic.position.set(0,.214,-.13);rifle.add(optic);
+  for(const z of [-.20,-.04]){
+    box(rifle,.081,.023,.051,0,.126,z,steel,.004);
+    box(rifle,.038,.054,.037,0,.157,z,receiver,.004);
+  }
+  const opticTube=add(optic,new THREE.CylinderGeometry(.048,.048,.24,20,1,true),steel);
+  opticTube.rotation.x=Math.PI/2;
+  for(const z of [-.126,.126])add(optic,new THREE.TorusGeometry(.047,.009,8,20),receiver,0,0,z);
+  for(const z of [-.084,.058])add(optic,new THREE.TorusGeometry(.049,.003,5,20),rubber,0,0,z);
+  tube(optic,.019,.026,0,.055,-.015,receiver,'y');
+  const windage=tube(optic,.016,.022,.054,0,-.015,receiver,'y');windage.rotation.z=Math.PI/2;
+  const opticGlass=new THREE.MeshStandardMaterial({color:'#74c7bb',emissive:'#24443d',emissiveIntensity:.25,transparent:true,opacity:.17,roughness:.12,metalness:.12,depthWrite:false,side:THREE.DoubleSide});materials.push(opticGlass);
+  add(optic,new THREE.CircleGeometry(.043,20),opticGlass,0,0,-.119);
+  add(optic,new THREE.CircleGeometry(.043,20),opticGlass,0,0,.119);
   // A separate compact sidearm, with moving slide and removable magazine.
   const slide=new THREE.Group();pistol.add(slide);
   box(slide,.09,.09,.29,0,.035,-.15,receiver);box(slide,.065,.02,.25,0,.088,-.15,steel);tube(slide,.019,.075,0,.038,-.316);
   box(pistol,.087,.07,.22,0,-.027,-.12,polymer);const pistolGrip=box(pistol,.08,.18,.102,0,-.12,-.015,polymer);pistolGrip.rotation.x=-.24;
   box(pistol,.015,.09,.12,-.045,-.075,-.14,steel);box(pistol,.015,.09,.12,.045,-.075,-.14,steel);box(pistol,.08,.016,.12,0,-.116,-.14,steel);
-  box(slide,.017,.023,.023,0,.095,-.275,steel);box(slide,.058,.024,.022,0,.095,-.028,steel);
+  box(slide,.017,.023,.023,0,.095,-.275,steel);
+  box(slide,.058,.008,.022,0,.087,-.028,steel);
+  // Open rear notch and three visible beads; the front bead and rear notch share Y=.100.
+  const sightPaint=material('#d9e6bb',.8,0);
+  const frontSight=box(slide,.007,.007,.002,0,.100,-.262,sightPaint,.001);frontSight.name='P12 front sight';
+  for(const side of [-1,1]){
+    box(slide,.012,.024,.022,side*.023,.095,-.028,steel,.002);
+    const rearSight=box(slide,.007,.007,.002,side*.023,.100,-.016,sightPaint,.001);rearSight.name=`P12 rear sight ${side===-1?'left':'right'}`;
+  }
   const pistolMagazine=box(pistol,.074,.15,.076,0,-.17,-.025,steel);
   for(let n=0;n<6;n++)box(slide,.094,.065,.006,0,.035,-.06+n*.009,polymer,.001);
   // A broad tapered steel blade, crossguard and wrapped grip distinguish slot 3.
@@ -49,6 +77,30 @@ export function createWeaponView(camera:THREE.Camera) {
   tube(knife,.032,.20,0,0,-.03,rubber);box(knife,.16,.025,.035,0,0,-.154,steel);box(knife,.068,.035,.025,0,0,.079,steel);
   for(let n=0;n<6;n++)tube(knife,.034,.007,0,0,-.11+n*.029,polymer);
   knife.rotation.set(-.12,0,-.23);
+  // Original silhouettes for the buy menu's primary weapons. Shared rifle meshes
+  // keep GPU resources modest; the SMG and pump shotgun use their own proportions.
+  const sniper=rifle.clone(true);sniper.name='SR5 sniper';group.add(sniper);
+  const sniperOptic=sniper.getObjectByName('AR30 optic')!;sniperOptic.name='SR5 optic';sniperOptic.scale.z=1.45;
+  tube(sniper,.018,.42,0,.025,-1.1);tube(sniper,.028,.10,0,.025,-1.34);
+  box(sniper,.10,.035,.20,0,.073,.31,rubber);box(sniper,.02,.028,.15,.085,.014,.04,steel);
+  const sniperMagazine=sniper.getObjectByName('AR30 magazine')!;sniperMagazine.scale.y=.55;
+  const smg=new THREE.Group();smg.name='SM30 submachine gun';group.add(smg);
+  box(smg,.095,.12,.37,0,.005,-.15,receiver);box(smg,.088,.055,.22,0,.09,-.12,polymer);
+  box(smg,.082,.085,.18,0,-.005,-.41,polymer);tube(smg,.018,.17,0,.02,-.57);tube(smg,.032,.12,0,.02,-.69,steel);
+  box(smg,.044,.035,.25,0,.015,.16,steel);box(smg,.08,.15,.035,0,-.03,.30,rubber);
+  const smgGrip=box(smg,.072,.16,.092,0,-.13,.01,polymer);smgGrip.rotation.x=-.18;
+  const smgMagazine=new THREE.Group();smgMagazine.position.set(0,-.15,-.17);smg.add(smgMagazine);
+  box(smgMagazine,.058,.25,.073,0,-.07,0,steel);box(smgMagazine,.066,.02,.082,0,-.19,0,polymer);
+  for(const z of [-.47,.015]){box(smg,.06,.018,.025,0,.12,z,steel);box(smg,.012,.032,.022,0,.137,z,marking,.002);}
+  const shotgun=new THREE.Group();shotgun.name='SG8 pump shotgun';group.add(shotgun);
+  const wood=material('#64503b',.82,.02);
+  box(shotgun,.095,.12,.32,0,-.005,-.10,receiver);tube(shotgun,.027,.78,0,.028,-.65);tube(shotgun,.021,.63,0,-.036,-.58);
+  box(shotgun,.09,.12,.29,0,-.045,.22,wood);box(shotgun,.105,.17,.035,0,-.065,.38,rubber);
+  const shotgunGrip=box(shotgun,.07,.12,.1,0,-.092,.025,wood);shotgunGrip.rotation.x=-.35;
+  const pump=new THREE.Group();pump.position.set(0,-.025,-.48);shotgun.add(pump);
+  box(pump,.10,.10,.24,0,0,0,wood);for(let n=0;n<7;n++)box(pump,.106,.104,.008,0,0,-.09+n*.03,polymer,.002);
+  box(shotgun,.018,.026,.018,0,.063,-1.01,marking,.002);box(shotgun,.054,.01,.025,0,.068,.02,steel);for(const side of [-1,1])box(shotgun,.008,.016,.025,side*.024,.073,.02,steel,.002);
+  const models:Record<Weapon,THREE.Group>={rifle,pistol,knife,smg,sniper,shotgun};
   function arm(side:number) {
     const root=new THREE.Group();group.add(root);
     const upper=add(root,new THREE.CylinderGeometry(.058,.071,1,10),sleeve);
@@ -69,10 +121,12 @@ export function createWeaponView(camera:THREE.Camera) {
     group.visible=pose.alive;
     if(!pose.alive)return;
     if(current!==pose.weapon){current=pose.weapon;swap=0;}
-    swap=Math.min(1,swap+dt*5.5);rifle.visible=current==='rifle';pistol.visible=current==='pistol';knife.visible=current==='knife';
+    swap=Math.min(1,swap+dt*5.5);for(const [weapon,model] of Object.entries(models))model.visible=current===weapon;
     const shotAge=Math.max(0,pose.time-pose.shotAt)/1000;
     const melee=current==='knife';
-    const slash=melee&&pose.shotAt>0&&shotAge<.38?Math.sin(shotAge/.38*Math.PI):0;
+    const primary=!melee&&current!=='pistol';
+    const slash=melee&&!pose.secondary&&pose.shotAt>0&&shotAge<.38?Math.sin(shotAge/.38*Math.PI):0;
+    const stab=melee&&pose.secondary&&pose.shotAt>0&&shotAge<.52?Math.sin(shotAge/.52*Math.PI):0;
     const recoil=!melee&&pose.shotAt>0?Math.exp(-shotAge*25)*Math.sin(Math.min(1,shotAge*35)*Math.PI*.65):0;
     const reloading=!melee&&pose.reloadUntil>pose.time;
     const progress=reloading?THREE.MathUtils.clamp(1-(pose.reloadUntil-pose.time)/pose.reloadDuration,0,1):0;
@@ -80,14 +134,22 @@ export function createWeaponView(camera:THREE.Camera) {
     const magOut=reloading?ease((progress-.12)/.15)*(1-ease((progress-.55)/.18)):0;
     const boltPull=reloading?Math.sin(ease((progress-.76)/.14)*Math.PI)*.05:0;
     cycle+=dt*(pose.speed>0.1?Math.min(12,pose.speed*2.1):1.3);
-    const moveWeight=THREE.MathUtils.clamp(pose.speed/5,0,1),bob=Math.sin(cycle)*.005*moveWeight;
-    group.position.set((current==='rifle'?.24:melee?.28:.20)-slash*.34,-.245+Math.abs(Math.cos(cycle))*.005*moveWeight-.25*(1-ease(swap))-.065*reloadLift+slash*.1,(melee?-.60:-.72)+recoil*.05-slash*.17);
-    group.rotation.set(recoil*.045+(pose.sprint?.22:0)-reloadLift*.12+slash*.15,.005+reloadLift*.22-slash*.45,-reloadLift*.33+bob+slash*.8);
+    const aim=melee||reloading||pose.sprint?0:THREE.MathUtils.clamp(pose.aim??0,0,1);
+    const moveWeight=THREE.MathUtils.clamp(pose.speed/5,0,1)*(1-aim),bob=Math.sin(cycle)*.005*moveWeight;
+    const hipX=primary?.24:melee?.28:.20;
+    const sightY=current==='rifle'||current==='sniper'?-.214:current==='smg'?-.1535:current==='shotgun'?-.076:-.100;
+    group.position.set(THREE.MathUtils.lerp(hipX,0,aim)-slash*.34-stab*.15,THREE.MathUtils.lerp(-.245,sightY,aim)+Math.abs(Math.cos(cycle))*.005*moveWeight-.25*(1-ease(swap))-.065*reloadLift+slash*.1+stab*.04,THREE.MathUtils.lerp(melee?-.60:-.72,primary?-.56:-.48,aim)+recoil*.05-slash*.17-stab*.48);
+    group.rotation.set(recoil*.045*(1-aim*.55)+(pose.sprint?.22:0)-reloadLift*.12+slash*.15,.005*(1-aim)+reloadLift*.22-slash*.45,-reloadLift*.33+bob+slash*.8);
+    knife.rotation.set(-.12*(1-stab),0,-.23*(1-stab));
     rifleMagazine.position.set(-magOut*.06,-.15-magOut*.31,-.18+magOut*.12);rifleMagazine.rotation.z=-magOut*.18;
+    sniperMagazine.position.copy(rifleMagazine.position);sniperMagazine.rotation.copy(rifleMagazine.rotation);
+    smgMagazine.position.set(-magOut*.04,-.15-magOut*.31,-.17+magOut*.1);smgMagazine.rotation.z=-magOut*.12;
+    const pumpStroke=current==='shotgun'&&pose.shotAt>0&&shotAge>.10&&shotAge<.56?Math.sin((shotAge-.10)/.46*Math.PI):0;
+    pump.position.z=-.48+pumpStroke*.12;
     pistolMagazine.position.y=-.17-magOut*.25;bolt.position.z=-.08+boltPull;slide.position.z=recoil*.028;
-    left.pose(new THREE.Vector3(melee?-.47:current==='rifle'?-.025:-.035,(melee?-.17:-.09)-magOut*.29,current==='rifle'?-.46+magOut*.34:melee?.05:-.07));
-    right.pose(new THREE.Vector3(.012,melee?-.035:-.13,current==='rifle'?.025:.015));
-    muzzle.position.z=current==='rifle'?-1.05:-.37;muzzle.visible=!melee&&pose.shotAt>0&&shotAge<.042&&!reloading;muzzle.rotation.z=pose.shotAt%7;
+    left.pose(new THREE.Vector3(melee?-.47:primary?-.025:-.035,(melee?-.17:-.09)-magOut*.29,primary?-.46+magOut*.34+pumpStroke*.12:melee?.05:-.07));
+    right.pose(new THREE.Vector3(.012,melee?-.035:-.13,primary?.025:.015));
+    muzzle.position.z=current==='sniper'?-1.41:current==='smg'?-.78:primary?-1.07:-.37;muzzle.visible=!melee&&pose.shotAt>0&&shotAge<.042&&!reloading;muzzle.rotation.z=pose.shotAt%7;
     if(lastReload&&!reloading){rifleMagazine.rotation.z=0;pistolMagazine.position.y=-.17;}lastReload=reloading;
   }
   return {group,muzzle,update,dispose(){camera.remove(group);for(const geometry of geometries)geometry.dispose();for(const m of materials)m.dispose();}};

@@ -22,6 +22,8 @@ export interface ActorPose {
   reloading?: boolean;
   weapon?: Weapon;
   attackAge?: number;
+  crouched?: boolean;
+  secondary?: boolean;
 }
 
 type Motion = 'idle' | 'walk' | 'run' | 'aim' | 'fire' | 'reload' | 'death';
@@ -40,6 +42,10 @@ export interface Actor {
   chest: THREE.Object3D;
   head: THREE.Object3D;
   arms: { right: THREE.Object3D[]; left: THREE.Object3D[] };
+  legs: { chain: THREE.Object3D[]; foot: THREE.Object3D; target: THREE.Vector3 }[];
+  body: THREE.Object3D;
+  bodyPosition: THREE.Vector3;
+  crouch: number;
   proceduralBones: { bone: THREE.Object3D; animatedRotation: THREE.Quaternion }[];
   materials: THREE.Material[];
   dead: boolean;
@@ -124,15 +130,33 @@ function meshBox(group: THREE.Group, size: [number, number, number], position: [
 function makeWeapon(kind: Weapon, dark: THREE.Material, metal: THREE.Material): THREE.Group {
   const group = new THREE.Group();
   group.name = kind;
-  if (kind === 'rifle') {
+  if (kind === 'rifle' || kind === 'sniper' || kind === 'smg' || kind === 'shotgun') {
     meshBox(group, [0.07, 0.09, 0.30], [0, 0.09, 0.12], dark);
     meshBox(group, [0.06, 0.06, 0.24], [0, 0.10, 0.38], dark);
     meshBox(group, [0.023, 0.023, 0.19], [0, 0.10, 0.57], metal);
     meshBox(group, [0.07, 0.11, 0.17], [0, 0.055, -0.17], dark);
-    meshBox(group, [0.045, 0.12, 0.065], [0, -0.015, 0.14], dark).rotation.x = -0.13;
+    if(kind!=='shotgun')meshBox(group, [0.045, 0.12, 0.065], [0, -0.015, 0.14], dark).rotation.x = -0.13;
     meshBox(group, [0.046, 0.11, 0.055], [0, -0.025, -0.005], dark).rotation.x = 0.18;
     meshBox(group, [0.025, 0.03, 0.07], [0, 0.15, 0.08], metal);
     meshBox(group, [0.012, 0.05, 0.025], [0, 0.135, 0.49], metal);
+    if(kind==='rifle'||kind==='sniper'){
+      meshBox(group,[.06,.06,kind==='sniper'?.29:.18],[0,.19,.14],metal);
+      meshBox(group,[.035,.04,.08],[0,.15,.14],dark);
+    }
+    if(kind==='sniper'){
+      meshBox(group,[.022,.022,.37],[0,.10,.74],metal);
+      meshBox(group,[.08,.03,.12],[0,.13,-.17],dark);
+    }
+    if(kind==='smg'){
+      group.scale.set(1,.92,.72);
+      meshBox(group,[.06,.06,.14],[0,.10,.69],dark);
+    }
+    if(kind==='shotgun'){
+      meshBox(group,[.035,.035,.48],[0,.045,.46],metal);
+      meshBox(group,[.09,.09,.18],[0,.065,.34],dark);
+      for(let n=0;n<5;n++)meshBox(group,[.094,.094,.009],[0,.065,.28+n*.03],metal);
+      meshBox(group,[.026,.026,.20],[0,.10,.70],metal);
+    }
   } else if (kind === 'pistol') {
     meshBox(group, [0.055, 0.07, 0.23], [0, 0.075, 0.07], metal);
     meshBox(group, [0.05, 0.11, 0.065], [0, -0.008, -0.01], dark).rotation.x = 0.16;
@@ -230,9 +254,8 @@ export function createActor(team: 'blue' | 'orange'): Actor {
   materials.push(dark, metal);
   const bladeMetal = new THREE.MeshStandardMaterial({ color: '#c2ccd0', roughness: 0.27, metalness: 0.8 });
   materials.push(bladeMetal);
-  const weapons = { rifle: makeWeapon('rifle', dark, metal), pistol: makeWeapon('pistol', dark, metal), knife: makeWeapon('knife', dark, bladeMetal) };
-  weaponMount.add(weapons.rifle, weapons.pistol, weapons.knife);
-  weapons.pistol.visible = weapons.knife.visible = false;
+  const weapons = { rifle: makeWeapon('rifle', dark, metal), pistol: makeWeapon('pistol', dark, metal), knife: makeWeapon('knife', dark, bladeMetal),smg:makeWeapon('smg',dark,metal),sniper:makeWeapon('sniper',dark,metal),shotgun:makeWeapon('shotgun',dark,metal) };
+  for(const [kind,weapon] of Object.entries(weapons)){weaponMount.add(weapon);weapon.visible=kind==='rifle';}
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, 0.1, 0.68);
   weaponMount.add(muzzle);
@@ -243,6 +266,13 @@ export function createActor(team: 'blue' | 'orange'): Actor {
   flash.position.z = 0.06;
   flash.visible = false;
   muzzle.add(flash);
+  model.updateWorldMatrix(true,true);
+  const legs=['L','R'].map(side=>{
+    const upper=model.getObjectByName(`UpperLeg${side}`)!,lower=model.getObjectByName(`LowerLeg${side}`)!,foot=model.getObjectByName(`Foot${side}`)!;
+    const ankle=new THREE.Object3D();ankle.position.copy(lower.worldToLocal(foot.getWorldPosition(new THREE.Vector3())));lower.add(ankle);
+    return {chain:[upper,lower,ankle],foot,target:new THREE.Vector3()};
+  });
+  const body=model.getObjectByName('Body')!;
 
   return {
     group, muzzle, model, mixer, actions, weaponMount, weapons, flash,
@@ -251,7 +281,8 @@ export function createActor(team: 'blue' | 'orange'): Actor {
       right: ['UpperArmR', 'LowerArmR', 'WristR'].map((name) => model.getObjectByName(name)!),
       left: ['UpperArmL', 'LowerArmL', 'WristL'].map((name) => model.getObjectByName(name)!),
     },
-    proceduralBones: ['Chest', 'Head', 'UpperArmR', 'LowerArmR', 'WristR', 'UpperArmL', 'LowerArmL', 'WristL'].map((name) => {
+    legs,body,bodyPosition:body.position.clone(),crouch:0,
+    proceduralBones: ['Chest', 'Head', 'UpperArmR', 'LowerArmR', 'WristR', 'UpperArmL', 'LowerArmL', 'WristL','UpperLegL','LowerLegL','UpperLegR','LowerLegR'].map((name) => {
       const bone = model.getObjectByName(name)!;
       return { bone, animatedRotation: bone.quaternion.clone() };
     }),
@@ -266,6 +297,7 @@ export function updateActor(actor: Actor, pose: ActorPose, deltaSeconds: number)
   // AnimationMixer skips writes for unchanged keyed values. Restore the last
   // authored pose before evaluation so procedural offsets never accumulate.
   for (const entry of actor.proceduralBones) entry.bone.quaternion.copy(entry.animatedRotation);
+  actor.body.position.copy(actor.bodyPosition);
   actor.group.position.set(pose.x, pose.y, pose.z);
   actor.group.rotation.y = pose.yaw + Math.PI; // source faces +Z, game faces -Z
 
@@ -288,6 +320,7 @@ export function updateActor(actor: Actor, pose: ActorPose, deltaSeconds: number)
     actor.flash.visible = false;
     actor.mixer.update(dt);
     for (const entry of actor.proceduralBones) entry.animatedRotation.copy(entry.bone.quaternion);
+    actor.bodyPosition.copy(actor.body.position);
     return;
   }
 
@@ -312,13 +345,25 @@ export function updateActor(actor: Actor, pose: ActorPose, deltaSeconds: number)
   actor.actions.run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 3.5, 0.65, 1.65));
   actor.mixer.update(dt);
   for (const entry of actor.proceduralBones) entry.animatedRotation.copy(entry.bone.quaternion);
+  actor.bodyPosition.copy(actor.body.position);
+  actor.crouch=THREE.MathUtils.lerp(actor.crouch,pose.crouched?1:0,1-Math.exp(-dt*18));
+  if(actor.crouch>.001){
+    actor.model.updateWorldMatrix(true,true);
+    for(const leg of actor.legs)leg.foot.getWorldPosition(leg.target);
+    actor.body.position.y-=.56*actor.crouch/actor.model.scale.y;
+    actor.model.updateWorldMatrix(true,true);
+    for(const leg of actor.legs){
+      elbowPole.set(0,0,1).transformDirection(actor.model.matrixWorld);
+      placeArm(leg.chain,leg.target,elbowPole);
+    }
+  }
 
   // Pitch and hand placement are applied after skeletal animation evaluation.
   const pitch = THREE.MathUtils.clamp(pose.pitch, -0.8, 0.8);
   actor.chest.quaternion.multiply(pitchRotation.setFromAxisAngle(PITCH_AXIS, -pitch * 0.65));
   actor.head.quaternion.multiply(pitchRotation.setFromAxisAngle(PITCH_AXIS, -pitch * 0.3));
   const weapon = pose.weapon ?? 'rifle';
-  if (weapon === 'rifle' && !pose.reloading) {
+  if (weapon !== 'pistol' && weapon !== 'knife' && !pose.reloading) {
     actor.model.updateWorldMatrix(true, true);
     actor.chest.localToWorld(gripTarget.set(-0.16, 0.015, 0.22));
     elbowPole.set(-1, -0.8, 0).transformDirection(actor.model.matrixWorld);
@@ -335,19 +380,18 @@ export function updateActor(actor: Actor, pose: ActorPose, deltaSeconds: number)
     leftWrist.quaternion.copy(armQuaternions[1].multiply(armQuaternions[0]));
   } else if (melee) {
     const attackAge = pose.attackAge ?? 1000;
-    const slash = attackAge >= 0 && attackAge < 380 ? Math.sin(attackAge / 380 * Math.PI) : 0;
+    const slash = !pose.secondary && attackAge >= 0 && attackAge < 380 ? Math.sin(attackAge / 380 * Math.PI) : 0;
+    const stab=pose.secondary&&attackAge>=0&&attackAge<520?Math.sin(attackAge/520*Math.PI):0;
     actor.model.updateWorldMatrix(true, true);
-    actor.chest.localToWorld(gripTarget.set(-0.21 + slash * 0.32, -0.07 + slash * 0.13, 0.23 + slash * 0.18));
+    actor.chest.localToWorld(gripTarget.set(-0.21 + slash * 0.32+stab*.1, -0.07 + slash * 0.13, 0.23 + slash * 0.18+stab*.29));
     elbowPole.set(-1, -0.8, 0).transformDirection(actor.model.matrixWorld);
     placeArm(actor.arms.right, gripTarget, elbowPole);
     actor.chest.localToWorld(gripTarget.set(0.22, -0.19, 0.05));
     elbowPole.set(1, -0.8, 0).transformDirection(actor.model.matrixWorld);
     placeArm(actor.arms.left, gripTarget, elbowPole);
   }
-  actor.weapons.rifle.visible = weapon === 'rifle';
-  actor.weapons.pistol.visible = weapon === 'pistol';
-  actor.weapons.knife.visible = melee;
-  actor.muzzle.position.set(0, weapon === 'rifle' ? 0.1 : 0.075, weapon === 'rifle' ? 0.68 : 0.19);
+  for(const [kind,model] of Object.entries(actor.weapons))model.visible=kind===weapon;
+  actor.muzzle.position.set(0, weapon === 'pistol' ? 0.075 : 0.1, weapon==='sniper'?.94:weapon==='shotgun'?.82:weapon==='smg'?.57:weapon === 'rifle' ? 0.68 : 0.19);
   actor.flash.visible = !melee && pose.shooting && !pose.reloading && Math.sin(actor.age * 65) > 0;
   actor.flash.scale.setScalar(0.8 + 0.3 * Math.sin(actor.age * 109));
   actor.animationState = pose.reloading ? 'reload' : pose.shooting ? melee ? 'melee' : 'fire' : running > 0.5 ? 'run' : walking > 0.2 ? 'walk' : 'idle';

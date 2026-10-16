@@ -1,10 +1,12 @@
 import { ROOM_TTL_MS, type RoomStore } from "./room-store";
 import { LOCATIONS, DEFAULT_LOCATION_ID } from "./locations";
-import { addPlayer, advanceMatch, applyInput, createMatch, removePlayer, sanitizeMatch, snapshot, type Input, type Match } from "./simulation";
+import { addPlayer, advanceMatch, applyInput, createMatch, removePlayer, sanitizeMatch, snapshot, type Input, type Match, type MatchMode } from "./simulation";
 
 interface Session { playerId: string; tokenHash: string; lastSeen: number; }
-interface Payload { action?: string; name?: string; room?: string; token?: string; team?: string; locationId?: string; input?: Partial<Input>; }
+interface Payload { action?: string; name?: string; room?: string; token?: string; team?: string; locationId?: string; mode?: unknown; input?: Partial<Input>; }
 export const PUBLIC_ROOM = "NANDED";
+export const CLASSIC_PUBLIC_ROOM = "CLASSC";
+export const PUBLIC_ROOMS = { deathmatch: PUBLIC_ROOM, classic: CLASSIC_PUBLIC_ROOM } as const;
 const ROOM_TTL = ROOM_TTL_MS;
 const SESSION_TTL = 45_000;
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -14,6 +16,11 @@ function code() { const bytes=crypto.getRandomValues(new Uint8Array(6));return A
 function token() { return Array.from(crypto.getRandomValues(new Uint8Array(32)),v=>v.toString(16).padStart(2,"0")).join(""); }
 async function digest(value:string) { return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value))),v=>v.toString(16).padStart(2,"0")).join(""); }
 function displayName(value:unknown) { return typeof value==="string"?value:"PLAYER"; }
+function selectedMode(value:unknown):MatchMode {
+  if(value===undefined)return "deathmatch"; // Keep existing clients in their original mode.
+  if(value==="classic"||value==="deathmatch")return value;
+  throw new GameError("Choose Classic or Deathmatch.",400);
+}
 function roomCode(value:unknown) {
   const room=typeof value==="string"?value.toUpperCase().trim():"";
   if(!/^[A-HJ-NP-Z2-9]{6}$/.test(room))throw new GameError("Enter a valid six-character room code.",400);
@@ -32,20 +39,21 @@ return async function POST(request:Request) {
     const now=clock();
     const publicJoin=payload.action==="quickjoin";
     const joining=publicJoin||payload.action==="join";
+    const mode=payload.action==="create"||publicJoin?selectedMode(payload.mode):undefined;
     if(payload.action==="create") {
       await rooms.prune(now-ROOM_TTL);
       const locationId=payload.locationId??DEFAULT_LOCATION_ID;
       if(!LOCATIONS.some(location=>location.id===locationId))throw new GameError("Choose a valid Nanded starting area.",400);
-      const state=createMatch(now,{locationId}),player=addPlayer(state,displayName(payload.name),payload.team==="orange"?"orange":"blue");
+      const state=createMatch(now,{locationId,mode}),player=addPlayer(state,displayName(payload.name),payload.team==="orange"?"orange":"blue");
       const secret=token(),sessions:Session[]=[{playerId:player.id,tokenHash:await digest(secret),lastSeen:now}];
       for(let attempt=0;attempt<4;attempt++) {
-        const room=code();if(room===PUBLIC_ROOM)continue;
+        const room=code();if(Object.values(PUBLIC_ROOMS).some(publicRoom=>publicRoom===room))continue;
         const created = await rooms.create({code:room,state:JSON.stringify(state),sessions:JSON.stringify(sessions),revision:0,updated_at:now});
         if(created)return response({room,token:secret,playerId:player.id,state:snapshot(state,player.id)},201);
       }
       throw new GameError("Could not reserve a room code. Please try again.",503);
     }
-    const room=publicJoin?PUBLIC_ROOM:roomCode(payload.room);
+    const room=publicJoin?PUBLIC_ROOMS[mode!]:roomCode(payload.room);
     let tokenHash:string|null=null;
     if(!joining) {
       if(typeof payload.token!=="string"||!/^[a-f0-9]{64}$/.test(payload.token))throw new GameError("Your room session has expired. Join again.",401);
@@ -60,13 +68,13 @@ return async function POST(request:Request) {
       const row=await rooms.get(room);
       if(!row) {
         if(!publicJoin)throw new GameError("Room not found or expired. Check the code or create a new room.",404);
-        const state=createMatch(clock(),{locationId:DEFAULT_LOCATION_ID});
+        const state=createMatch(clock(),{locationId:DEFAULT_LOCATION_ID,mode});
         await rooms.create({code:room,state:JSON.stringify(state),sessions:"[]",revision:0,updated_at:state.time});
         continue; // Concurrent creators converge on the same durable primary key.
       }
       const expiredRoom=clock()-row.updated_at>ROOM_TTL;
       if(expiredRoom&&!publicJoin)throw new GameError("Room not found or expired. Check the code or create a new room.",404);
-      let state=expiredRoom?createMatch(clock(),{locationId:DEFAULT_LOCATION_ID}):JSON.parse(row.state) as Match;
+      let state=expiredRoom?createMatch(clock(),{locationId:DEFAULT_LOCATION_ID,mode}):JSON.parse(row.state) as Match;
       const tick=Math.max(clock(),row.updated_at,state.time);
       sanitizeMatch(state);
       let sessions:Session[]=expiredRoom?[]:JSON.parse(row.sessions) as Session[];
@@ -74,9 +82,11 @@ return async function POST(request:Request) {
       if(!joining&&(!session||tick-session.lastSeen>SESSION_TTL))throw new GameError("Your room session has expired. Join again.",401);
       sessions=sessions.filter(s=>tick-s.lastSeen<=SESSION_TTL&&state.players.some(p=>p.id===s.playerId&&!p.bot));
       const activeIds=new Set(sessions.map(s=>s.playerId));
-      state.players=state.players.filter(p=>!p.bot&&activeIds.has(p.id));
+      // Expiry is a real departure: preserve objective cleanup such as dropping
+      // a carried bomb instead of leaving it attached to a removed player.
+      for(const player of [...state.players])if(!activeIds.has(player.id))removePlayer(state,player.id);
       if(joining&&state.players.length===0) {
-        state=createMatch(tick,{locationId:publicJoin?DEFAULT_LOCATION_ID:state.locationId});
+        state=createMatch(tick,{locationId:publicJoin?DEFAULT_LOCATION_ID:state.locationId,mode:publicJoin?mode:state.mode});
         sessions=[]; // A new visit to an empty room starts a fresh match.
       }
       let playerId=session?.playerId;
