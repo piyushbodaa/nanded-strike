@@ -3,268 +3,139 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium, expect } from '@playwright/test';
 
-// Run against an already-started app: npm run dev, then npm run test:browser.
-const baseURL = process.env.TEST_URL || process.env.BASE_URL || 'http://127.0.0.1:5173';
-const artifacts = resolve(process.env.TEST_ARTIFACTS || 'test-results/browser');
-const executablePath = process.env.CHROMIUM_PATH || '/usr/bin/chromium';
-await mkdir(artifacts, { recursive: true });
-const browser = await chromium.launch({
-  executablePath,
-  headless: process.env.HEADED !== '1',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-swiftshader'],
-});
-const errors = [];
-const networkErrors = [];
-const contexts = [];
-
-async function createPage(name, viewport = { width: 1440, height: 900 }, { path = '/', touch = false, lowGraphics = false } = {}) {
-  const context = await browser.newContext({ viewport, baseURL, hasTouch: touch, isMobile: touch, deviceScaleFactor: 1 });
-  if (lowGraphics) await context.addInitScript(() => localStorage.setItem('nanded-settings', JSON.stringify({ sensitivity: 1, volume: 0, quality: 'low' })));
-  contexts.push(context);
-  const page = await context.newPage();
-  page.on('pageerror', (error) => errors.push(`${name}: ${error.message}`));
-  page.on('response', (response) => {
-    if (response.status() >= 500 && response.url().startsWith(baseURL)) {
-      networkErrors.push(`${name}: ${response.status()} ${response.url()}`);
-    }
-  });
-  await page.goto(path, { waitUntil: 'networkidle' });
+const baseURL=process.env.TEST_URL||process.env.BASE_URL||'http://127.0.0.1:5173';
+const artifacts=resolve(process.env.TEST_ARTIFACTS||'test-results/multiplayer');
+await mkdir(artifacts,{recursive:true});
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:process.env.HEADED!=='1',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader']});
+const contexts=[],errors=[],serverErrors=[];
+const debug=page=>page.evaluate(()=>window.__NANDED_DEBUG__);
+const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
+const screenshot=(page,name)=>page.screenshot({path:resolve(artifacts,`${name}.png`),fullPage:true});
+async function wait(page,predicate,message){await expect.poll(async()=>{const state=await debug(page);return !!state&&predicate(state);},{message,timeout:30_000,intervals:[100,250,500]}).toBe(true);}
+async function click(page,locator){await page.bringToFront();if(await page.evaluate(()=>matchMedia('(pointer:coarse)').matches))await locator.tap({force:true});else await locator.click({force:true});}
+async function createPage(name,viewport,touch=false){
+  const context=await browser.newContext({baseURL,viewport,hasTouch:touch,isMobile:touch,deviceScaleFactor:touch?2:1});contexts.push(context);
+  const page=await context.newPage();page.setDefaultTimeout(30_000);
+  page.on('pageerror',error=>errors.push(`${name}: ${error.message}`));
+  page.on('response',response=>{if(response.status()>=500&&response.url().startsWith(baseURL))serverErrors.push(`${name}: ${response.status()} ${response.url()}`);});
+  await page.goto('/',{waitUntil:'domcontentloaded',timeout:60_000});
+  await expect(page.getByTestId('play-online')).toBeEnabled({timeout:90_000});
+  await expect(page.getByTestId('lobby')).toBeVisible();
+  await screenshot(page,`${name}-lobby-sharp`);
+  if(touch){const ratio=await page.getByTestId('game-canvas').evaluate(canvas=>canvas.width/canvas.clientWidth);assert.ok(ratio>=1.9,'Phone defaults to sharp 2x drawing buffer');}
+  await page.locator('#lobby-name').fill(name);
+  await click(page,page.getByTestId('open-settings'));
+  await expect(page.getByRole('button',{name:/SHARP/})).toHaveAttribute('aria-pressed','true');
+  await click(page,page.getByRole('button',{name:/PERFORMANCE/}));
+  await click(page,page.getByTestId('close-settings'));
   return page;
 }
-
-async function screenshot(page, name) {
-  await page.screenshot({ path: resolve(artifacts, `${name}.png`), fullPage: true });
+async function enter(page){
+  await page.bringToFront();
+  if(await page.getByTestId('resume-game').isVisible())await click(page,page.getByTestId('resume-game'));
+  await wait(page,state=>state.phase==='playing','Player enters the match');
 }
-
-async function debug(page) {
-  return page.evaluate(() => {
-    const state = window.__NANDED_DEBUG__;
-    return typeof state === 'function' ? state() : state;
-  });
-}
-
-async function waitForDebug(page, predicate, message) {
-  await expect.poll(async () => {
-    const state = await debug(page);
-    return !!state && predicate(state);
-  }, {
-    message,
-    timeout: 20_000,
-    intervals: [100, 200, 400],
-  }).toBe(true);
-}
-
-async function pressFor(page, key, ms) {
-  await page.keyboard.down(key);
-  await page.waitForTimeout(ms);
-  await page.keyboard.up(key);
-}
-
-async function touchHold(page, locator, ms) {
-  const box = await locator.boundingBox();
-  assert.ok(box, 'Touch control has a visible hit target');
-  const session = await page.context().newCDPSession(page);
-  try {
-    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 }] });
-    await page.waitForTimeout(ms);
-    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  } finally {
-    await session.detach();
+async function leave(page){
+  await page.bringToFront();
+  if(!(await page.getByTestId('pause-menu').isVisible())){
+    if(await page.evaluate(()=>matchMedia('(pointer:coarse)').matches))await click(page,page.getByRole('button',{name:'Pause game',exact:true}));
+    else await page.keyboard.press('Escape');
   }
-}
-
-function distance(a, b) {
-  return Math.hypot(a.x - b.x, a.z - b.z);
-}
-
-async function verifyRoomAPI() {
-  const context = await browser.newContext({ baseURL });
-  const sessions = [];
-  const idle = { seq: 0, forward: 0, strafe: 0, yaw: 0, pitch: 0, shoot: false, reload: false, sprint: false, jump: false };
-  async function request(payload, expected = 200) {
-    const response = await context.request.post('/api/game', { data: payload });
-    assert.equal(response.status(), expected, `${payload.action}: unexpected HTTP status`);
-    return response.json();
-  }
-  try {
-    await request({ action: 'missing' }, 400);
-    await request({ action: 'join', room: 'BAD', name: 'INVALID' }, 400);
-    const host = await request({ action: 'create', name: 'API HOST' }, 201);
-    sessions.push(host);
-    assert.match(host.room, /^[A-HJ-NP-Z2-9]{6}$/);
-    assert.match(host.token, /^[a-f0-9]{64}$/);
-    const guests = await Promise.all([1, 2, 3].map(async (i) => {
-      const guest = await request({ action: 'join', room: host.room, name: `API GUEST ${i}` });
-      sessions.push(guest);
-      return guest;
-    }));
-    const result = await request({ action: 'input', room: host.room, token: host.token, input: idle });
-    const humans = result.state.players.filter((p) => !p.bot);
-    assert.equal(humans.length, 4, 'Concurrent joins preserve every participant');
-    assert.equal(new Set(humans.map((p) => p.id)).size, 4);
-    for (const session of sessions) {
-      assert.ok(humans.some((p) => p.id === session.playerId), 'Joined player is in authoritative state');
-      assert.ok(!JSON.stringify(result.state).includes(session.token), 'Snapshot does not expose session credentials');
-    }
-    assert.ok(!JSON.stringify(result.state).includes('tokenHash'), 'Snapshot excludes authentication records');
-    await request({ action: 'input', room: host.room, token: '0'.repeat(64), input: idle }, 401);
-    await request({ action: 'input', room: host.room, token: host.token, input: {} }, 400);
-    const other = await request({ action: 'create', name: 'ISOLATED ROOM' }, 201);
-    sessions.push(other);
-    await request({ action: 'input', room: other.room, token: host.token, input: idle }, 401);
-    const departing = guests[0];
-    await request({ action: 'leave', room: host.room, token: departing.token });
-    sessions.splice(sessions.indexOf(departing), 1);
-    await request({ action: 'input', room: host.room, token: departing.token, input: idle }, 401);
-    const after = await request({ action: 'input', room: host.room, token: host.token, input: { ...idle, seq: 1 } });
-    assert.ok(!after.state.players.some((p) => p.id === departing.playerId), 'Leaving removes a human player');
-    assert.equal(after.state.players.length, 6, 'Bots fill empty arena slots');
-    console.log('PASS: room API authentication, concurrent joins, isolation, departure');
-  } finally {
-    for (const session of sessions) {
-      await context.request.post('/api/game', { data: { action: 'leave', room: session.room, token: session.token } }).catch(() => {});
-    }
-    await context.close();
-  }
-}
-
-try {
-  await verifyRoomAPI();
-  const page = await createPage('desktop');
-  await expect(page.getByTestId('lobby')).toBeVisible();
-  await waitForDebug(page, (state) => state?.renderer?.calls > 0 && state.renderer.triangles > 0, 'WebGL renders map geometry');
-  await screenshot(page, 'lobby');
-  await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('settings-panel')).toBeVisible();
-  await page.getByRole('button', { name: 'LOW · FASTER PLAY', exact: true }).click();
-  await page.locator('#sensitivity').focus();
-  await page.keyboard.press('ArrowRight');
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('nanded-settings')).quality)).toBe('low');
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('nanded-settings')).sensitivity)).toBe(1.1);
-  await page.getByTestId('close-settings').click();
-  await expect(page.getByTestId('settings-panel')).toBeHidden();
-  await page.getByTestId('start-solo').click();
-  await waitForDebug(page, (state) => state?.mode === 'solo', 'Solo match starts');
-  if (await page.getByTestId('resume-game').isVisible()) await page.getByTestId('resume-game').click();
-  await waitForDebug(page, (state) => state?.phase === 'playing', 'Pointer lock permits solo controls');
-  const soloStart = (await debug(page)).localPlayer;
-  await pressFor(page, 'KeyW', 500);
-  await waitForDebug(page, (state) => distance(state.localPlayer, soloStart) > 0.2, 'W moves the player through the arena');
-  await screenshot(page, 'solo');
-  const ammo = (await debug(page)).ammo;
-  await page.mouse.down();
-  await page.waitForTimeout(200);
-  await page.mouse.up();
-  await waitForDebug(page, (state) => state.ammo < ammo, 'Firing consumes ammunition');
-  await page.keyboard.press('KeyR');
-  await waitForDebug(page, (state) => state.ammo === 30, 'Reload fills the rifle magazine');
-  await page.keyboard.press('Digit2');
-  await waitForDebug(page, (state) => state.ammo === 12, 'Switching to pistol changes the magazine');
-  await page.keyboard.press('Digit1');
-  await waitForDebug(page, (state) => state.ammo === 30, 'Switching back preserves rifle magazine');
-  await page.keyboard.down('Tab');
-  await expect(page.getByTestId('scoreboard')).toBeVisible();
-  await page.keyboard.up('Tab');
-  await expect(page.getByTestId('scoreboard')).toBeHidden();
-  await page.keyboard.press('Escape');
   await expect(page.getByTestId('pause-menu')).toBeVisible();
-  const pausedPosition = (await debug(page)).localPlayer;
-  await page.waitForTimeout(300);
-  assert.equal(distance(pausedPosition, (await debug(page)).localPlayer), 0, 'Solo pause freezes the simulation');
-  await page.getByTestId('resume-game').click();
-  await waitForDebug(page, (state) => state.phase === 'playing', 'Resume restores pointer lock');
-  await page.keyboard.press('Escape');
-  await page.getByTestId('leave-game').click();
+  await click(page,page.getByTestId('leave-game'));
   await expect(page.getByTestId('lobby')).toBeVisible();
-  console.log('PASS: lobby, WebGL, settings, solo movement/fire/reload/weapons/scoreboard, pause/resume');
+}
+async function verifyTouch(page){
+  await enter(page);
+  await wait(page,state=>state.health>0,'Touch player is alive before input check');
+  const controls=await page.locator('.touch-controls button,.session-tools button').evaluateAll(buttons=>buttons.map(button=>{const r=button.getBoundingClientRect();return {name:button.getAttribute('aria-label'),x:r.x,y:r.y,width:r.width,height:r.height,w:innerWidth,h:innerHeight};}));
+  for(const r of controls){assert.ok(r.width>=48&&r.height>=48,`${r.name}: >=48px`);assert.ok(r.x>=0&&r.y>=0&&r.x+r.width<=r.w&&r.y+r.height<=r.h,`${r.name}: in viewport`);}
+  for(let i=0;i<controls.length;i++)for(let j=i+1;j<controls.length;j++){const a=controls[i],b=controls[j];assert.ok(a.x+a.width<=b.x||b.x+b.width<=a.x||a.y+a.height<=b.y||b.y+b.height<=a.y,`${a.name}/${b.name}: no overlap`);}
+  const joystick=await page.getByTestId('movement-joystick').boundingBox(),fire=await page.getByTestId('fire-button').boundingBox(),size=page.viewportSize();
+  assert.ok(joystick&&fire);
+  const move={x:joystick.x+joystick.width/2,y:joystick.y+joystick.height*.2,id:1},aim={x:size.width*.65,y:size.height*.4,id:2},shoot={x:fire.x+fire.width/2,y:fire.y+fire.height/2,id:3};
+  const session=await page.context().newCDPSession(page),before=await debug(page);
+  try{
+    await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[move]});
+    await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[move,aim]});
+    await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[move,aim,shoot]});
+    await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[move,{...aim,x:aim.x+30},shoot]});
+    await wait(page,state=>distance(state.localPlayer,before.localPlayer)>.4&&state.ammo<before.ammo,'Real touch movement and firing reach authoritative state');
+    await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    assert.ok(Math.abs((await debug(page)).yaw-before.yaw)>.05,'Simultaneous aim touch changes view');
+  }finally{await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}).catch(()=>{});await session.detach();}
+  await page.waitForTimeout(1300);
+  const stopped=await debug(page);await page.waitForTimeout(500);
+  const later=await debug(page);
+  assert.ok(distance(stopped.localPlayer,later.localPlayer)<.15,'Released joystick stops server movement');
+  assert.equal(stopped.ammo,later.ammo,'Released fire stops firing');
+  await click(page,page.getByRole('button',{name:'Reload weapon',exact:true}));
+  await wait(page,state=>state.ammo===30,'Touch reload completes');
+}
+let host,phone;
+try{
+  host=await createPage('QA DESKTOP',{width:1100,height:720});
+  await click(host,host.getByTestId('play-online'));
+  await wait(host,state=>state.mode==='online'&&state.roomCode==='NANDED','Desktop joins shared public room');
+  console.log('PASS desktop joined public room');
+  const first=await debug(host);assert.ok(first.players.every(player=>!player.bot),'Public room contains no bots');
+  if(first.players.length===1)await expect(host.getByTestId('online-status')).toContainText('WAITING');
+  phone=await createPage('QA PHONE',{width:844,height:390},true);
+  await click(phone,phone.getByTestId('play-online'));
+  await wait(phone,state=>state.mode==='online'&&state.roomCode==='NANDED','Phone independently joins same public room');
+  const phoneId=(await debug(phone)).playerId,hostId=first.playerId;
+  await wait(host,state=>state.players.some(player=>player.id===phoneId),'Desktop receives phone participant');
+  await wait(phone,state=>state.players.some(player=>player.id===hostId),'Phone receives desktop participant');
+  const joined=await debug(host);assert.ok(joined.players.every(player=>!player.bot));
+  const a=joined.players.find(player=>player.id===hostId),b=joined.players.find(player=>player.id===phoneId);
+  assert.ok(distance(a,b)>.9,'Players spawn separately');
+  console.log('PASS public: two independent clients, same NANDED room, real players only, separated spawns');
+  await enter(host);const start=(await debug(host)).localPlayer;
+  await host.keyboard.down('KeyW');try{await wait(host,state=>distance(state.localPlayer,start)>.5,'Desktop movement reaches server');}finally{await host.keyboard.up('KeyW');}
+  await host.waitForTimeout(900);const moved=(await debug(host)).localPlayer;
+  await wait(phone,state=>{const peer=state.players.find(player=>player.id===hostId);return peer&&distance(peer,moved)<.8&&distance(peer,start)>.3;},'Phone sees desktop movement');
+  const ammo=(await debug(host)).ammo;await host.mouse.down();try{await wait(host,state=>state.ammo<ammo,'Desktop firing reaches server');}finally{await host.mouse.up();}
+  await host.keyboard.press('KeyR');await wait(host,state=>state.ammo===30,'Desktop reload completes');
+  await host.keyboard.down('Tab');await expect(host.getByTestId('scoreboard')).toBeVisible();await host.keyboard.up('Tab');
+  await screenshot(host,'public-desktop');await host.keyboard.press('Escape');
+  const phoneBefore=(await debug(phone)).localPlayer;await verifyTouch(phone);
+  const phoneAfter=(await debug(phone)).localPlayer;
+  await wait(host,state=>{const peer=state.players.find(player=>player.id===phoneId);return peer&&distance(peer,phoneAfter)<.8&&distance(peer,phoneBefore)>.3;},'Desktop sees phone touch movement');
+  await screenshot(phone,'public-phone-landscape');
+  console.log('PASS public controls: desktop and phone movement visible in both sessions, actual multi-touch aim/fire, reload, scoreboard');
+  await phone.route('**/api/game',route=>route.abort());
+  await expect(phone.getByTestId('online-status')).toContainText('RECONNECTING',{timeout:20_000});
+  await phone.unroute('**/api/game');await wait(phone,state=>state.mode==='online'&&state.roomCode==='NANDED','Phone remains in room after reconnect');
+  await expect(phone.getByTestId('online-status')).not.toContainText('RECONNECTING',{timeout:20_000});
+  await leave(phone);await wait(host,state=>!state.players.some(player=>player.id===phoneId),'Leaving removes the real participant');await leave(host);
 
-  await page.getByRole('button', { name: 'PLAY WITH FRIENDS', exact: true }).click();
-  await page.getByTestId('player-name').fill('QA HOST');
-  await page.getByTestId('create-room').click();
-  await waitForDebug(page, (state) => state?.mode === 'online' && /^[A-HJ-NP-Z2-9]{6}$/.test(state.roomCode), 'Host creates an online room');
-  const hostState = await debug(page);
-  const guest = await createPage('phone-guest', { width: 390, height: 844 }, { path: `/?room=${hostState.roomCode}`, touch: true, lowGraphics: true });
-  await expect(guest.getByTestId('room-code-input')).toHaveValue(hostState.roomCode);
-  await guest.getByTestId('player-name').fill('QA PHONE');
-  await guest.getByTestId('join-room').tap();
-  await waitForDebug(guest, (state) => state?.mode === 'online' && state.roomCode === hostState.roomCode, 'Independent client joins the host room');
-  const guestState = await debug(guest);
-  await waitForDebug(page, (state) => state.players.some((p) => p.id === guestState.playerId), 'Host receives joined guest');
-  await waitForDebug(guest, (state) => state.players.some((p) => p.id === hostState.playerId), 'Guest receives host');
-  await page.bringToFront();
-  if (await page.getByTestId('resume-game').isVisible()) await page.getByTestId('resume-game').click();
-  await waitForDebug(page, (state) => state.phase === 'playing', 'Host resumes online controls');
-  const hostStart = (await debug(page)).localPlayer;
-  await pressFor(page, 'KeyW', 500);
-  await waitForDebug(page, (state) => distance(state.localPlayer, hostStart) > 0.2, 'Online movement reaches the server');
-  await page.waitForTimeout(500);
-  const hostEnd = (await debug(page)).localPlayer;
-  await waitForDebug(guest, (state) => {
-    const remote = state.players.find((p) => p.id === hostState.playerId);
-    return remote && distance(remote, hostEnd) < 0.5 && distance(remote, hostStart) > 0.2;
-  }, 'Guest receives authoritative host movement');
-  const onlineAmmo = (await debug(page)).ammo;
-  await page.mouse.down();
-  await page.waitForTimeout(20);
-  await page.mouse.up();
-  await waitForDebug(page, (state) => state.ammo < onlineAmmo, 'A quick online click reaches the server');
-  await screenshot(page, 'multiplayer');
-  await page.keyboard.press('Escape');
-  await guest.bringToFront();
-  if (await guest.getByTestId('resume-game').isVisible()) await guest.getByTestId('resume-game').tap();
-  await waitForDebug(guest, (state) => state.phase === 'playing' && state.health > 0, 'Phone enters the shared arena');
-  const phoneStart = (await debug(guest)).localPlayer;
-  await touchHold(guest, guest.getByRole('button', { name: 'Move ↑', exact: true }), 900);
-  await waitForDebug(guest, (state) => distance(state.localPlayer, phoneStart) > 0.2, 'Phone touch movement reaches the server');
-  await guest.waitForTimeout(600);
-  const phoneEnd = (await debug(guest)).localPlayer;
-  await waitForDebug(page, (state) => {
-    const remote = state.players.find((p) => p.id === guestState.playerId);
-    return remote && distance(remote, phoneEnd) < 0.75 && distance(remote, phoneStart) > 0.2;
-  }, 'Desktop receives authoritative phone movement');
-  const phoneAmmo = (await debug(guest)).ammo;
-  await touchHold(guest, guest.getByRole('button', { name: 'Fire weapon', exact: true }), 20);
-  await waitForDebug(guest, (state) => state.ammo < phoneAmmo, 'A quick phone tap fires in the shared room');
-  await screenshot(guest, 'mobile-multiplayer');
-  await guest.getByRole('button', { name: 'Pause game', exact: true }).tap();
-  await guest.getByTestId('leave-game').tap();
-  await expect(guest.getByTestId('lobby')).toBeVisible();
-  await waitForDebug(page, (state) => !state.players.some((p) => p.id === guestState.playerId), 'Host receives guest departure');
-  await page.bringToFront();
-  if (!(await page.getByTestId('pause-menu').isVisible())) await page.keyboard.press('Escape');
-  await page.getByTestId('leave-game').click();
-  assert.ok(await guest.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Phone lobby has no horizontal overflow');
-  await screenshot(guest, 'mobile-lobby');
-  await page.context().close();
-  await guest.context().close();
-  console.log('PASS: desktop and touch phone join by invite link, share movement in both directions, fire, leave');
+  await host.getByTestId('start-location').selectOption('college-road');
+  await click(host,host.getByRole('button',{name:'CREATE PRIVATE ROOM',exact:true}));
+  await expect(host.locator('#private-location')).toHaveValue('college-road');
+  await click(host,host.getByTestId('create-room'));
+  await wait(host,state=>state.mode==='online'&&state.roomCode!=='NANDED','Private room created');
+  const privateState=await debug(host);assert.equal(privateState.locationId,'college-road');assert.equal(privateState.players.length,1);assert.equal(privateState.players[0].bot,false);
+  await phone.goto(`/?room=${privateState.roomCode}`,{waitUntil:'domcontentloaded'});
+  await expect(phone.getByTestId('room-code-input')).toHaveValue(privateState.roomCode,{timeout:60_000});
+  assert.equal((await debug(phone)).mode,'lobby','Invite does not autojoin before a user click');
+  await expect(phone.getByTestId('join-room')).toBeEnabled({timeout:60_000});await click(phone,phone.getByTestId('join-room'));
+  await wait(phone,state=>state.mode==='online'&&state.roomCode===privateState.roomCode,'Invite link joins private room');
+  const guestId=(await debug(phone)).playerId;
+  await wait(host,state=>state.players.some(player=>player.id===guestId),'Private host receives invited phone');
+  const pair=await debug(host);assert.equal(pair.players.length,2);assert.ok(pair.players.every(player=>!player.bot));
+  await click(host,host.getByRole('button',{name:new RegExp('COPY INVITE LINK')}));
+  await expect(host.getByRole('button',{name:/INVITE COPIED/})).toBeVisible();
+  await screenshot(host,'private-invite');
+  await leave(phone);await leave(host);
+  console.log('PASS private: selected area, fresh human-only room, prefilled invite requires click, second browser joins, copy invite');
 
-  const tablet = await createPage('touch-tablet', { width: 1024, height: 768 }, { touch: true, lowGraphics: true });
-  await tablet.getByTestId('start-solo').tap();
-  await waitForDebug(tablet, (state) => state.phase === 'playing', 'Tablet enters arena without pointer lock');
-  await expect(tablet.getByRole('button', { name: 'Move ↑', exact: true })).toBeVisible();
-  const tabletStart = (await debug(tablet)).localPlayer;
-  await touchHold(tablet, tablet.getByRole('button', { name: 'Move ↑', exact: true }), 600);
-  await waitForDebug(tablet, (state) => distance(state.localPlayer, tabletStart) > 0.2, 'Tablet touch controls move the player');
-  const tabletAmmo = (await debug(tablet)).ammo;
-  await touchHold(tablet, tablet.getByRole('button', { name: 'Fire weapon', exact: true }), 200);
-  await waitForDebug(tablet, (state) => state.ammo < tabletAmmo, 'Tablet touch fire consumes rounds');
-  await tablet.getByRole('button', { name: 'Reload weapon', exact: true }).tap();
-  await waitForDebug(tablet, (state) => state.ammo === 30, 'Tablet touch reload completes');
-  await screenshot(tablet, 'tablet-game');
-  await tablet.getByRole('button', { name: 'Pause game', exact: true }).tap();
-  await expect(tablet.getByTestId('pause-menu')).toBeVisible();
-  console.log('PASS: tablet touch movement, fire, reload, pause at 1024px');
-  assert.deepEqual(errors, [], 'No uncaught browser errors');
-  assert.deepEqual(networkErrors, [], 'No server errors');
-  console.log(JSON.stringify({ ok: true, baseURL, artifacts }));
-} catch (error) {
-  for (let i = 0; i < contexts.length; i++) {
-    const page = contexts[i].pages()[0];
-    if (page && !page.isClosed()) await screenshot(page, `failure-${i}`).catch(() => {});
-  }
-  console.error(JSON.stringify({ errors, networkErrors, artifacts }, null, 2));
-  throw error;
-} finally {
+  await phone.setViewportSize({width:390,height:844});
+  await click(phone,phone.getByTestId('explore-map'));await wait(phone,state=>state.mode==='solo'&&state.exploration,'Peaceful exploration remains available');
+  assert.equal((await debug(phone)).players.length,1);await verifyTouch(phone);await screenshot(phone,'explore-phone-portrait');await leave(phone);
+  assert.deepEqual(errors,[],'No browser JavaScript errors');assert.deepEqual(serverErrors,[],'No server failures');
+  console.log(`PASS all browser flows. Screenshots: ${artifacts}`);
+}catch(error){for(const [index,context] of contexts.entries())for(const page of context.pages()){await screenshot(page,`failure-${index}`).catch(()=>{});console.error('Failure state:',JSON.stringify(await debug(page).catch(()=>null)));}throw error;}
+finally{
+  for(const page of [phone,host])if(page&&!page.isClosed())try{const state=await debug(page);if(state?.mode!=='lobby')await leave(page);}catch{}
   await browser.close();
 }

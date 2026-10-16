@@ -191,3 +191,26 @@ kbd{font-family:var(--mono);font-size:11px;padding:5px 7px;border:1px solid #859
 @media(prefers-reduced-motion:reduce){button{transition:none}}
 
 @media(max-width:359px) and (orientation:portrait){.movement-joystick{width:96px;height:96px}.joystick-axis:after{top:-38px;height:76px}.joystick-thumb{width:47px;height:47px}.touch-caption{font-size:8px;letter-spacing:0}.radar-wrap{width:80px}.match-status,.exploration-status{left:calc(50% + 8px)}.score{min-width:29px;font-size:25px;padding:10px 5px}.match-clock{padding:8px 6px}.match-clock b{font-size:17px}.exploration-status{padding:10px 7px}.exploration-status b{font-size:8px}.exploration-status span{font-size:7px}}
+/* Shared public match and private-room controls. */
+.lobby-content{flex:1 0 auto}
+.lobby-name{display:flex;align-items:center;gap:14px;margin-bottom:13px}
+.lobby-name .input-label{margin:0;white-space:nowrap;font-size:10px}
+.lobby-name input{width:100%;min-width:0;height:48px;background:#17261f;border:1px solid #819079;border-radius:0;color:var(--text);padding:0 13px;font-size:15px}
+.room-actions{display:flex;gap:12px;justify-content:space-between;margin:6px 0 13px}
+.room-actions button{min-height:44px;display:flex;align-items:center;justify-content:center;gap:7px;background:transparent;border-bottom:1px solid #7d8e70;color:#ecf1e3;font-size:10px;font-weight:700;letter-spacing:.5px;flex:1}
+.room-actions button:hover{color:var(--orange);border-color:var(--orange)}
+.location-label{font-size:10px;letter-spacing:.7px}
+.room-tabs{margin:22px 0}
+.code-input{font-family:var(--mono);font-size:22px!important;letter-spacing:5px;text-transform:uppercase}
+.pause-invite{margin-bottom:12px;justify-content:flex-start;font-size:11px}
+.pause-invite b{margin-left:auto;color:var(--orange);letter-spacing:2px}
+.session-tools .invite-button{width:auto;min-width:104px;gap:9px;padding:9px;font-family:var(--mono);font-size:12px}
+.online-status{position:absolute;top:110px;left:50%;transform:translateX(-50%);padding:8px 11px;background:#17271ff2;border:1px solid #8ba079;display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;white-space:nowrap;color:#e7f1dd}
+.online-status i{width:6px;height:6px;border-radius:50%;background:#b5e6a1;flex-shrink:0}
+.online-status.is-reconnecting{border-color:var(--orange);color:var(--orange)}
+.online-status.is-reconnecting i{background:var(--orange)}
+@media(max-width:850px){.online-status{top:92px;font-size:9px;padding:7px 9px}.room-actions button{min-height:48px}}
+@media(max-width:530px){.hero h1{font-size:clamp(50px,15.4vw,60px)}.lobby-name{gap:10px}.lobby-name .input-label{font-size:9px}.lobby-name input{font-size:16px}.room-actions{gap:10px}.room-actions button{font-size:9px;letter-spacing:0}.location-label{font-size:9px;letter-spacing:.4px}.session-tools{flex-direction:column-reverse;gap:8px}.session-tools .invite-button{width:48px;min-width:48px;padding:0}.invite-button span{display:none}.online-status{top:76px;left:calc(50% + 14px);font-size:8px;padding:7px;gap:5px}.kill-feed{top:142px}.pause-invite{font-size:10px;padding:12px;gap:9px}.pause-invite b{font-size:11px}}
+@media(max-height:540px) and (orientation:landscape){.lobby-content{padding:16px 0}.start-panel{grid-row:1 / 5}.hero h1{font-size:46px}.hero-description{font-size:11px}.lobby-name{margin-bottom:8px;gap:9px}.lobby-name input{height:40px;font-size:13px}.lobby-name .input-label{font-size:8px}.hero-buttons{grid-template-columns:1fr 1fr}.hero-buttons button{min-height:56px;font-size:9px;padding:8px;gap:6px}.hero-buttons button>svg:last-child{display:none}.hero-buttons button small{font-size:8px}.hero-buttons button>svg:first-child{width:17px}.room-actions{margin:3px 0 8px;gap:10px}.room-actions button{font-size:8px;min-height:38px}.location-label{font-size:8px}.select-wrap{margin-bottom:5px}.device-hint{grid-column:1;grid-row:4;margin:12px 0 0;max-width:280px}.online-status{top:73px;font-size:9px;left:50%}.session-tools{flex-direction:row}.session-tools .invite-button{width:auto;min-width:104px;padding:9px}.invite-button span{display:inline}.kill-feed{top:108px}.pause-invite{min-height:44px;margin-bottom:10px;padding:9px 12px}.pause-panel .pause-tip{margin-top:12px}}
+
+.footer-links{display:flex;align-items:center;gap:22px}@media(max-width:850px){.footer-links{gap:14px}.lobby-footer>span{max-width:230px}}@media(max-width:530px){.footer-links{flex-wrap:wrap;gap:12px}.footer-links a{font-size:8px}}@media(max-height:540px) and (orientation:landscape){.footer-links{gap:13px}.footer-links a{font-size:7px}.lobby-footer>span{max-width:210px}}

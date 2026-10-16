@@ -73,11 +73,12 @@ export class GameClient {
     this.simulationTimer=setInterval(()=>this.tick(),1000/60);
     this.frame=requestAnimationFrame(this.animate);
   }
-  get location(){return LOCATIONS.find(l=>l.id===this.match?.locationId)?.name??LOCATIONS[0].name;}
+  get location(){const p=this.me;if(p)return [...LOCATIONS].sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0].name;return LOCATIONS.find(l=>l.id===this.match?.locationId)?.name??LOCATIONS[0].name;}
   get me(){return this.match?.players.find(p=>p.id===this.playerId)??null;}
   private listen(target:EventTarget,event:string,handler:EventListener,options?:AddEventListenerOptions){target.addEventListener(event,handler,options);this.cleanup.push(()=>target.removeEventListener(event,handler,options));}
   private bind(){
     this.listen(window,'resize',()=>this.resize());
+    this.listen(window,'pagehide',()=>{if(this.mode==='online')this.leave();});
     this.listen(document,'pointerlockchange',()=>{if(this.mode!=='lobby'&&!this.touch){this.setPaused(document.pointerLockElement!==this.canvas);}});
     this.listen(document,'pointerlockerror',()=>{if(this.mode!=='lobby')this.setPaused(true);});
     this.listen(window,'blur',()=>{this.keys.clear();this.shooting=false;if(this.mode!=='lobby')this.pause();});
@@ -109,9 +110,9 @@ export class GameClient {
     if(exploration){p.x=location.x;p.z=location.z;p.yaw=location.yaw;}
     this.mode='solo';this.setupPlayer();this.sound.unlock();this.resume();this.emitHUD();
   }
-  async startOnline(action:'create'|'join',name:string,room?:string){
+  async startOnline(action:'create'|'join'|'quickjoin',name:string,room?:string,locationId=DEFAULT_LOCATION_ID){
     this.leave();const generation=++this.networkGeneration;
-    const result=await this.request({action,name:name||'Operator',room});if(generation!==this.networkGeneration)return;
+    const result=await this.request({action,name:name||'Operator',room,locationId});if(generation!==this.networkGeneration)return;
     this.match=result.state;this.playerId=result.playerId;this.token=result.token;this.room=result.room;this.mode='online';this.setupPlayer();
     this.sound.unlock();this.setPaused(true);this.emitHUD();this.poll();
   }

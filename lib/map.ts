@@ -2,7 +2,8 @@
  * OSM / Overture / Google Open Buildings. Estimated heights and road widths.
  * Inspect provenance and the unchanged geographic source at /map-reference.json. */
 import data from './geodata.json';
-import { LOCATIONS, DEFAULT_LOCATION_ID } from './locations';
+import { DEFAULT_LOCATION_ID } from './locations';
+import SPAWN_LAYOUTS from './spawn-layouts.json';
 export { LOCATIONS, DEFAULT_LOCATION_ID, LOCATION } from './locations';
 export type MapPoint = { x:number; z:number };
 export type Collider = MapPoint & { w:number; d:number; h:number; polygon?:MapPoint[] };
@@ -20,10 +21,9 @@ export const LAMP_POLES:MapPoint[]=[];
 export const PLANT_POTS:MapPoint[]=[];
 export const COLLIDERS:Collider[]=BUILDINGS;
 export const WAYPOINTS:MapPoint[]=data.waypoints;
-const origin=LOCATIONS.find(l=>l.id===DEFAULT_LOCATION_ID)!;
-function closest(x:number,z:number,count=4) {return [...WAYPOINTS].sort((a,b)=>Math.hypot(a.x-x,a.z-z)-Math.hypot(b.x-x,b.z-z)).slice(0,count);}
-export const SPAWNS={blue:closest(origin.x-28,origin.z-18),orange:closest(origin.x+28,origin.z+18)};
-export const SPAWN_YAWS={blue:origin.yaw,orange:origin.yaw+Math.PI};
+// Prevalidated road clusters: eight slots/team, 80–160m separation, building occlusion.
+export const SPAWNS=SPAWN_LAYOUTS[DEFAULT_LOCATION_ID].spawns;
+export const SPAWN_YAWS=SPAWN_LAYOUTS[DEFAULT_LOCATION_ID].spawnYaws;
 export function roadDistance(p:MapPoint) {
  let best=Infinity;
  for(const r of ROADS)for(let i=1;i<r.points.length;i++) {

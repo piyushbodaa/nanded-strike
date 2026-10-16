@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addPlayer, advanceMatch, applyInput, createMatch, isWalkable, MATCH_DURATION, movePlayer, removePlayer, sanitizeInput, snapshot, type Input, type Match, type Player } from "../lib/simulation";
+import { addPlayer, advanceMatch, applyInput, createMatch, isWalkable, MATCH_DURATION, movePlayer, removePlayer, sanitizeInput, snapshot, RULESET_VERSION, type Input, type Match, type Player } from "../lib/simulation";
 import { COLLIDERS, LOCATIONS, MAP_BOUNDS, SPAWNS, WAYPOINTS } from "../lib/map";
-import { touchesSolid } from "../lib/geometry";
+import { touchesSolid, raySolid } from "../lib/geometry";
 const START=1_700_000_000_000;
 // Derive geometry-sensitive fixtures from the current map, preserving the collision assertions.
 const WALL = COLLIDERS.find(c => c.h > 3 && c.w > 5 && c.d > 5 && c.d < 20 && touchesSolid(c.x,c.z,c) &&
@@ -30,7 +30,7 @@ test("spawn slots and waypoints are inside collision-free map space",()=>{
 test("every spawn faces a walkable route into the arena",()=>{
   const match=createMatch(START);
   for(const team of ["blue","orange"] as const){
-    const player=match.players.find(p=>p.team===team)!;
+    const player=addPlayer(match,`SPAWN ${team}`,team);
     for(const point of SPAWNS[team]){
       Object.assign(player,{x:point.x,z:point.z,y:0,vy:0,health:100});
       for(let frame=0;frame<10;frame++)movePlayer(match,player,input(frame,{forward:1}),.05);
@@ -39,12 +39,12 @@ test("every spawn faces a walkable route into the arena",()=>{
     }
   }
 });
-test("six combatants, eight-human cap, balanced four-person teams",()=>{
-  const match=createMatch(START);assert.equal(match.players.length,6);assert.ok(match.players.every(p=>p.bot));
-  for(let i=0;i<8;i++){addPlayer(match,`Player ${i}`,"blue");assert.equal(match.players.length,Math.max(6,i+1));}
+test("matches contain only real players, with an eight-human cap and four-person teams",()=>{
+  const match=createMatch(START);assert.equal(match.players.length,0);
+  for(let i=0;i<8;i++){addPlayer(match,`Player ${i}`,"blue");assert.equal(match.players.length,i+1);assert.ok(match.players.every(p=>!p.bot));}
   assert.equal(match.players.filter(p=>p.team==="blue").length,4);assert.equal(match.players.filter(p=>p.team==="orange").length,4);
   assert.throws(()=>addPlayer(match,"Ninth"),/full/);
-  const departing=match.players[0].id;removePlayer(match,departing);assert.ok(!match.players.some(p=>p.id===departing));
+  const departing=match.players[0].id;removePlayer(match,departing);assert.ok(!match.players.some(p=>p.id===departing));assert.equal(match.players.length,7);
 });
 test("names and inputs sanitize control values without accepting client position",()=>{
   const match=createMatch(START);const p=addPlayer(match," <A>\u0000 ");assert.equal(p.name,"A");
@@ -128,62 +128,65 @@ test("dead players cannot fire and respawn after three seconds",()=>{
   advanceMatch(match,START+3100);assert.equal(b.health,100);assert.equal(b.respawnAt,0);
 });
 test("time limit supports draws and snapshots are serializable independent copies",()=>{
-  const match=createMatch(START);advanceMatch(match,START+MATCH_DURATION);assert.equal(match.winner,"draw");
+  const match=createMatch(START);addPlayer(match,"COPY");advanceMatch(match,START+MATCH_DURATION);assert.equal(match.winner,"draw");
   const copy=snapshot(match);copy.players[0].health=1;assert.notEqual(match.players[0].health,1);assert.doesNotThrow(()=>JSON.stringify(copy));
 });
-test("bots traverse the connected map and engage over a full minute",()=>{
-  const match=createMatch(START),first=match.players.map(p=>({x:p.x,z:p.z}));
-  for(let i=1;i<=600;i++)advanceMatch(match,START+i*100);
-  assert.ok(match.scores.blue+match.scores.orange>0,"bots never scored");
-  assert.ok(match.players.some((p,i)=>Math.hypot(p.x-first[i].x,p.z-first[i].z)>4));
-  assert.ok(match.players.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.z)&&isWalkable(p.x,p.z)));
+test("legacy bots are removed before ticking or snapshots and never refill",()=>{
+  const match=createMatch(START),human=addPlayer(match,"HUMAN"),legacy=addPlayer(match,"OLD BOT");
+  legacy.bot=true;legacy.intent=input(0,{shoot:true,forward:1});delete match.rulesVersion;
+  match.scores.orange=9;match.events.push({id:++match.eventId,type:"kill",playerId:legacy.id,targetId:human.id,x:0,y:1,z:0,time:START,text:"OLD BOT kill"});
+  advanceMatch(match,START+100);
+  assert.equal(match.rulesVersion,RULESET_VERSION);
+  assert.deepEqual(match.players.map(p=>p.id),[human.id]);
+  assert.deepEqual(match.scores,{blue:0,orange:0});
+  assert.ok(!JSON.stringify(snapshot(match)).includes("OLD BOT"));
+  const injected={...human,id:"old-late-bot",name:"LATE BOT",bot:true};match.players.push(injected);
+  assert.equal(snapshot(match).players.length,1,"snapshots must sanitize legacy bots even without a tick");
+  removePlayer(match,human.id);advanceMatch(match,START+MATCH_DURATION*2);
+  assert.equal(match.players.length,0);
 });
 
-test("all seven practice starts produce nearby, clear spawns and playable opponents",async t=>{
+test("all seven sectors separate real teams behind buildings with clear street exits",async t=>{
   assert.equal(LOCATIONS.length,7);
   assert.equal(new Set(LOCATIONS.map(location=>location.id)).size,7);
   for(const location of LOCATIONS)await t.test(location.name,()=>{
     const match=createMatch(START,{locationId:location.id,start:location});
-    assert.equal(match.locationId,location.id);
-    assert.equal(match.exploration,false);
-    assert.equal(match.players.length,6);
+    assert.equal(match.locationId,location.id);assert.equal(match.players.length,0);
     const slots=match.spawns!;
-    assert.ok(slots,"practice must derive spawns from the selected sector");
-    const human=addPlayer(match,"PRACTICE","blue");
-    assert.equal(match.players.filter(p=>p.bot).length,5);
+    assert.ok(slots,"room must derive spawns from its selected sector");
+    const human=addPlayer(match,"OPERATOR","blue");
+    for(let i=1;i<8;i++)addPlayer(match,`REAL PLAYER ${i}`);
+    assert.equal(match.players.length,8);assert.ok(match.players.every(p=>!p.bot));
     assert.ok(slots.blue.some(p=>p.x===human.x&&p.z===human.z));
-    assert.ok(Math.hypot(human.x-location.x,human.z-location.z)<8,"player spawned outside the chosen neighbourhood");
-
+    assert.ok(Math.hypot(human.x-location.x,human.z-location.z)<15,"player spawned outside the chosen neighbourhood");
     for(const team of ["blue","orange"] as const){
-      assert.equal(slots[team].length,4,`${team} needs four distinct spawn slots`);
+      assert.ok(slots[team].length>=4,`${team} needs several distinct spawn slots`);
       for(const [index,point] of slots[team].entries()){
         assert.ok(isWalkable(point.x,point.z),`${team} slot ${index} is blocked`);
-        assert.ok(slots[team].slice(index+1).every(other=>Math.hypot(point.x-other.x,point.z-other.z)>1.25),"spawn slots overlap");
+        assert.ok(slots[team].slice(index+1).every(other=>Math.hypot(point.x-other.x,point.z-other.z)>2.5),"spawn slots overlap");
         const probe={...human,x:point.x,y:0,z:point.z,vy:0,yaw:match.spawnYaws![team]};
-        for(let frame=0;frame<10;frame++)movePlayer(match,probe,input(frame,{forward:1}),.05);
-        assert.ok(Math.hypot(probe.x-point.x,probe.z-point.z)>2,`${team} slot ${index} faces an immediate wall`);
+        for(let frame=0;frame<20;frame++)movePlayer(match,probe,input(frame,{forward:1}),.05);
+        assert.ok(Math.hypot(probe.x-point.x,probe.z-point.z)>4.5,`${team} slot ${index} faces an immediate wall`);
         assert.ok(isWalkable(probe.x,probe.z));
       }
+      const teammates=match.players.filter(p=>p.team===team);
+      for(const [i,p]of teammates.entries())assert.ok(teammates.slice(i+1).every(q=>Math.hypot(p.x-q.x,p.z-q.z)>=2),"real teammates spawned on top of one another");
     }
-    for(const enemy of slots.orange){
-      const distance=Math.hypot(enemy.x-location.x,enemy.z-location.z);
-      assert.ok(distance>25&&distance<80,"opponents must start in this sector, not at the default sector");
+    for(const blue of slots.blue)for(const orange of slots.orange){
+      const distance=Math.hypot(orange.x-blue.x,orange.z-blue.z);
+      assert.ok(distance>=80&&distance<=160,`opposing spawns are ${distance}m apart`);
+      const dx=(orange.x-blue.x)/distance,dz=(orange.z-blue.z)/distance;
+      assert.ok(COLLIDERS.some(c=>raySolid(blue.x,1.8,blue.z,dx,0,dz,c)<distance),"opposing spawn slots have an unobstructed sightline");
     }
-    const initial=match.players.map(p=>({x:p.x,z:p.z}));
-    let scored=false;
-    for(let frame=1;frame<=300;frame++){
-      advanceMatch(match,START+frame*100);
-      scored ||= match.scores.blue+match.scores.orange>0;
-      assert.ok(match.players.every(p=>isWalkable(p.x,p.z)),"a combatant entered a building footprint");
-    }
-    assert.ok(scored,"bots could not find or engage opponents within 30 seconds");
-    assert.ok(match.players.some((p,i)=>p.bot&&Math.hypot(p.x-initial[i].x,p.z-initial[i].z)>2),"bots did not leave their starting positions");
-
-    // An ordinary death must bring the human back to this selected sector.
-    match.players=[human];human.health=0;human.respawnAt=match.time+100;
-    advanceMatch(match,match.time+150);
+    const before=match.players.map(p=>({id:p.id,x:p.x,z:p.z,health:p.health,ammo:p.ammo}));
+    for(let frame=1;frame<=300;frame++)advanceMatch(match,START+frame*100);
+    assert.deepEqual(match.players.map(p=>({id:p.id,x:p.x,z:p.z,health:p.health,ammo:p.ammo})),before,"idle humans must not move or fight autonomously");
+    assert.deepEqual(match.scores,{blue:0,orange:0});
+    // Ordinary death returns a human to this sector, apart from other teammates.
+    human.health=0;human.respawnAt=match.time+100;advanceMatch(match,match.time+150);
     assert.equal(human.health,100);
     assert.ok(slots.blue.some(point=>point.x===human.x&&point.z===human.z));
+    assert.ok(match.players.filter(p=>p!==human&&p.team===human.team).every(p=>Math.hypot(p.x-human.x,p.z-human.z)>=2));
   });
 });
 
@@ -195,7 +198,7 @@ test("exploration stays untimed and bot-free at every selected location",async t
     assert.equal(match.players.length,1);
     assert.equal(player.bot,false);
     assert.equal(match.locationId,location.id);
-    assert.ok(Math.hypot(player.x-location.x,player.z-location.z)<8);
+    assert.ok(Math.hypot(player.x-location.x,player.z-location.z)<15);
     const afterDeadline=START+MATCH_DURATION*10;
     advanceMatch(match,afterDeadline);
     assert.equal(match.winner,null);

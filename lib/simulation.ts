@@ -1,4 +1,6 @@
-import { COLLIDERS, SPAWNS, SPAWN_YAWS, WAYPOINTS, MAP_BOUNDS } from "./map";
+import { COLLIDERS, SPAWNS, SPAWN_YAWS, MAP_BOUNDS } from "./map";
+import { LOCATIONS, DEFAULT_LOCATION_ID } from "./locations";
+import SPAWN_LAYOUTS from "./spawn-layouts.json";
 import { SpatialGrid } from "./spatial";
 import { raySolid, touchesSolid } from "./geometry";
 
@@ -29,7 +31,7 @@ export interface Match {
   players: Player[]; scores: Record<Team, number>; endsAt: number;
   winner: Team | "draw" | null; events: GameEvent[]; time: number;
   startedAt: number; round: number; winnerAt: number; nextId: number; eventId: number; seed: number;
-  locationId?: string; exploration?: boolean;
+  locationId?: string; exploration?: boolean; rulesVersion?: number;
   spawns?: Record<Team,{x:number;z:number}[]>; spawnYaws?: Record<Team,number>;
 }
 export const EYE_HEIGHT = 1.58;
@@ -43,7 +45,7 @@ export const WEAPONS = {
   pistol: { name: "P12", magazine: 12, reserve: 60, damage: 27, interval: 260, reload: 1250, range: 70 },
 } as const;
 const ZERO_INPUT: Input = { forward: 0, strafe: 0, yaw: 0, pitch: 0, shoot: false, reload: false, sprint: false, jump: false, seq: -1 };
-const BOT_NAMES = ["GODAVARI", "DECCAN", "WAZIRABAD", "MARATHWADA", "SAHYADRI", "VISHNUPURI", "TARODA", "KINWAT"];
+export const RULESET_VERSION = 2;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const distance = (a: {x:number;z:number}, b: {x:number;z:number}) => Math.hypot(a.x-b.x,a.z-b.z);
 const finite = (v: unknown, fallback = 0) => typeof v === "number" && Number.isFinite(v) ? v : fallback;
@@ -67,7 +69,10 @@ function event(match: Match, type: GameEvent["type"], player: Player | undefined
 }
 function magazines(): Player["magazines"] { return { rifle: {ammo:30,reserve:120}, pistol: {ammo:12,reserve:60} }; }
 function spawn(match: Match, player: Player) {
-  const options = (match.spawns??SPAWNS)[player.team];
+  const allOptions = (match.spawns??SPAWNS)[player.team];
+  const friends = match.players.filter(p=>p.id!==player.id&&p.team===player.team&&p.health>0);
+  const unoccupied = allOptions.filter(spot=>friends.every(friend=>distance(friend,spot)>=2));
+  const options = unoccupied.length ? unoccupied : allOptions;
   let best = options[0]; let score = -Infinity;
   for (const spot of options) {
     const enemy = Math.min(80, ...match.players.filter(p => p.team !== player.team && p.health>0).map(p => distance(p, spot)));
@@ -88,57 +93,41 @@ function makePlayer(match: Match, name: string, team: Team, bot: boolean): Playe
     botTarget:-1,botDecisionAt:0,nextBotShotAt:0 };
   match.players.push(player); spawn(match,player); return player;
 }
-function fillBots(match: Match) {
-  if(match.exploration)return;
-  while (match.players.length < 6) {
-    const blue = match.players.filter(p => p.team === "blue").length;
-    const orange = match.players.length-blue;
-    const team = blue <= orange ? "blue" : "orange";
-    const used = new Set(match.players.map(p=>p.name));
-    makePlayer(match,BOT_NAMES.find(n=>!used.has(n))??`BOT ${match.nextId}`,team,true);
-  }
-}
 export interface MatchOptions {locationId?:string;start?:{x:number;z:number;yaw:number};exploration?:boolean;}
-function sectorSpawns(start:{x:number;z:number;yaw:number}) {
-  const nearest=waypointGrid.around(start.x,start.z,110).filter(p=>isWalkable(p.x,p.z));
-  const blue=isWalkable(start.x,start.z)?start:nearest.sort((a,b)=>distance(a,start)-distance(b,start))[0]??SPAWNS.blue[0];
-  const target={x:blue.x-Math.sin(start.yaw)*42,z:blue.z-Math.cos(start.yaw)*42};
-  const enemyCandidates=nearest.filter(p=>distance(p,blue)>28&&distance(p,blue)<72);
-  const orange=enemyCandidates.sort((a,b)=>distance(a,target)+(clearPath(a,blue)?0:25)-distance(b,target)-(clearPath(b,blue)?0:25))[0]??SPAWNS.orange[0];
-  const direction=Math.atan2(-(orange.x-blue.x),-(orange.z-blue.z));
-  const slots=(base:{x:number;z:number},yaw:number)=>{
-    const points:{x:number;z:number}[]=[];
-    for(const back of [0,2.2,4.4,-2.2])for(const side of [0,-1.4,1.4,-2.8,2.8]) {
-      const p={x:base.x+Math.sin(yaw)*back+Math.cos(yaw)*side,z:base.z+Math.cos(yaw)*back-Math.sin(yaw)*side};
-      const ahead={x:p.x-Math.sin(yaw)*2,z:p.z-Math.cos(yaw)*2};
-      if(isWalkable(p.x,p.z)&&clearPath(p,ahead)&&points.every(q=>distance(p,q)>1.25))points.push(p);
-      if(points.length===4)return points;
-    }
-    return points.length?points:[base];
-  };
-  return {spawns:{blue:slots(blue,direction),orange:slots(orange,direction+Math.PI)},spawnYaws:{blue:direction,orange:direction+Math.PI}};
+function sectorSpawns(locationId:string) {
+  const layout=SPAWN_LAYOUTS[locationId as keyof typeof SPAWN_LAYOUTS]??SPAWN_LAYOUTS[DEFAULT_LOCATION_ID];
+  return {spawns:{blue:layout.spawns.blue.map(p=>({...p})),orange:layout.spawns.orange.map(p=>({...p}))},spawnYaws:{...layout.spawnYaws}};
 }
 export function createMatch(now: number, options:MatchOptions={}): Match {
   const time = finite(now, Date.now());
-  const match: Match = {players:[],scores:{blue:0,orange:0},endsAt:time+MATCH_DURATION,winner:null,events:[],time,
+  const location=LOCATIONS.find(l=>l.id===options.locationId)??(options.start?[...LOCATIONS].sort((a,b)=>distance(a,options.start!)-distance(b,options.start!))[0]:LOCATIONS.find(l=>l.id===DEFAULT_LOCATION_ID)!);
+  return {players:[],scores:{blue:0,orange:0},endsAt:time+MATCH_DURATION,winner:null,events:[],time,
     startedAt:time,round:1,winnerAt:0,nextId:1,eventId:0,seed:(time>>>0)||12345,
-    locationId:options.locationId,exploration:options.exploration??false,...(options.start?sectorSpawns(options.start):{})};
-  fillBots(match); return match;
+    rulesVersion:RULESET_VERSION,locationId:location.id,exploration:options.exploration??false,...sectorSpawns(location.id)};
+}
+/** Migrate persisted rooms once, and never allow an old bot to enter simulation/snapshots. */
+export function sanitizeMatch(match:Match):void {
+  const hadBots=match.players.some(player=>player.bot);
+  if(!hadBots&&match.rulesVersion===RULESET_VERSION)return;
+  match.players=match.players.filter(player=>!player.bot);
+  const location=LOCATIONS.find(l=>l.id===match.locationId)??LOCATIONS.find(l=>l.id===DEFAULT_LOCATION_ID)!;
+  Object.assign(match,sectorSpawns(location.id),{locationId:location.id,rulesVersion:RULESET_VERSION,
+    scores:{blue:0,orange:0},winner:null,winnerAt:0,startedAt:match.time,endsAt:match.time+MATCH_DURATION,events:[]});
+  for(const player of match.players){player.kills=0;player.deaths=0;spawn(match,player);}
 }
 export function addPlayer(match: Match, name: string, requestedTeam?: Team): Player {
+  sanitizeMatch(match);
   if (match.players.filter(p=>!p.bot).length >= 8) throw new Error("This room is full. Try another room.");
   const blue = match.players.filter(p=>!p.bot&&p.team==="blue").length;
   const orange = match.players.filter(p=>!p.bot&&p.team==="orange").length;
   let team: Team = requestedTeam === "blue" || requestedTeam === "orange" ? requestedTeam : blue <= orange ? "blue" : "orange";
   if ((team === "blue" ? blue : orange) >= 4) team = team === "blue" ? "orange" : "blue";
-  const bot = match.players.findIndex(p=>p.bot&&p.team===team);
-  const otherBot = match.players.findIndex(p=>p.bot);
-  if (bot>=0) match.players.splice(bot,1); else if (otherBot>=0) match.players.splice(otherBot,1);
   const safeName = String(name ?? "").replace(/[\u0000-\u001f\u007f<>]/g,"").trim().slice(0,18)||"PLAYER";
-  const player = makePlayer(match,safeName,team,false); fillBots(match); return player;
+  return makePlayer(match,safeName,team,false);
 }
 export function removePlayer(match: Match, playerId: string) {
-  match.players = match.players.filter(p=>p.id!==playerId); fillBots(match);
+  sanitizeMatch(match);
+  match.players = match.players.filter(p=>p.id!==playerId);
 }
 
 /** Collider coordinates are centers; their vertical slabs stop shots. */
@@ -210,63 +199,13 @@ export function applyInput(match:Match,playerId:string,raw:Partial<Input>,now:nu
   if(input.reload)beginReload(match,player);
   if(input.shoot&&!input.sprint)shoot(match,player);
 }
-function clearPath(a:{x:number;z:number},b:{x:number;z:number},padding=PLAYER_RADIUS+.05) {
-  const length=distance(a,b);if(length<.01)return true;
-  const dx=(b.x-a.x)/length,dz=(b.z-a.z)/length;
-  return !colliderGrid.along(a.x,a.z,dx,dz,length,padding).some(c=>rayBox(a.x,.6,a.z,dx,0,dz,c,padding)<length);
-}
-const waypointGrid=new SpatialGrid(WAYPOINTS.map((p,i)=>({...p,w:0,d:0,index:i})),22);
-const waypointEdges=WAYPOINTS.map((a,i)=>waypointGrid.around(a.x,a.z,22).flatMap(b=>i!==b.index&&distance(a,b)<22&&clearPath(a,b)?[b.index]:[]));
-function navigationTarget(player:Player,target:{x:number;z:number}):number {
-  // A tiny shared waypoint graph keeps bots out of building walls.
-  const candidates=waypointGrid.around(player.x,player.z,50).map(p=>({i:p.index,d:distance(player,p)})).sort((a,b)=>a.d-b.d);
-  const starts=candidates.slice(0,18).filter(v=>clearPath(player,WAYPOINTS[v.i])).slice(0,3);
-  if(!starts.length)return -1;
-  const costs=WAYPOINTS.map(()=>Infinity),previous=WAYPOINTS.map(()=>-1),open=new Set<number>();
-  for(const start of starts){costs[start.i]=start.d;open.add(start.i);}
-  let goal=-1,bestScore=Infinity;
-  let expanded=0;
-  while(open.size&&expanded++<512){
-    let current=-1,score=Infinity;
-    for(const index of open){const value=costs[index]+distance(WAYPOINTS[index],target);if(value<score){current=index;score=value;}}
-    open.delete(current);
-    const remaining=distance(WAYPOINTS[current],target);
-    if(remaining<bestScore){bestScore=remaining;goal=current;}
-    if(remaining<50&&clearPath(WAYPOINTS[current],target)){goal=current;break;}
-    for(const next of waypointEdges[current]){const cost=costs[current]+distance(WAYPOINTS[current],WAYPOINTS[next]);if(cost<costs[next]){costs[next]=cost;previous[next]=current;open.add(next);}}
-  }
-  if(goal<0)return starts[0].i;
-  while(previous[goal]>=0)goal=previous[goal];
-  if(distance(player,WAYPOINTS[goal])<1.1){
-    const neighbor=waypointEdges[goal].filter(i=>clearPath(player,WAYPOINTS[i])).sort((a,b)=>distance(WAYPOINTS[a],target)-distance(WAYPOINTS[b],target))[0];
-    if(neighbor!==undefined)return neighbor;
-  }
-  return goal;
-}
-function botInput(match:Match,p:Player):Input {
-  const opponents=match.players.filter(t=>t.team!==p.team&&t.health>0).sort((a,b)=>distance(p,a)-distance(p,b));
-  const target=opponents[0];if(!target)return {...ZERO_INPUT};
-  const d=distance(p,target),visible=d<52&&clearPath(p,target,0);
-  let yaw=p.yaw,pitch=0,forward=0,strafe=0,fire=false;
-  if(visible){
-    const aimX=target.x+Math.sin(match.time/700+p.id.length)*.45,aimZ=target.z+Math.cos(match.time/650)*.45;
-    yaw=Math.atan2(-(aimX-p.x),-(aimZ-p.z));pitch=Math.atan2(target.y+1.05-(p.y+EYE_HEIGHT),d);
-    forward=d>15?.7:d<6?-.25:0;strafe=Math.sin(match.time/1100+Number(p.id.slice(1)))>.1?.42:-.42;
-    if(match.time>=p.nextBotShotAt){fire=true;p.nextBotShotAt=match.time+420+random(match)*300;}
-  }else{
-    if(match.time>=p.botDecisionAt||p.botTarget<0||distance(p,WAYPOINTS[p.botTarget]??p)<1.3){p.botTarget=navigationTarget(p,target);p.botDecisionAt=match.time+900;}
-    const dest=clearPath(p,target)?target:WAYPOINTS[p.botTarget];
-    if(dest){yaw=Math.atan2(-(dest.x-p.x),-(dest.z-p.z));forward=.74;}
-  }
-  p.yaw=yaw;p.pitch=pitch;
-  return {forward,strafe,yaw,pitch,shoot:fire,reload:p.ammo===0,sprint:false,jump:false,seq:0};
-}
 function restartRound(match:Match) {
   match.round++;match.startedAt=match.time;match.endsAt=match.time+MATCH_DURATION;match.scores={blue:0,orange:0};match.winner=null;match.winnerAt=0;
   for(const p of match.players){p.kills=0;p.deaths=0;spawn(match,p);}
   event(match,"round",undefined,{text:`Round ${match.round}`});
 }
 export function advanceMatch(match:Match,now:number) {
+  sanitizeMatch(match);
   const destination=Math.max(match.time,finite(now,match.time));
   // Requests advance at most 400 ms of motion, even after a sleeping browser or server.
   const elapsed=Math.min(400,destination-match.time);
@@ -278,7 +217,7 @@ export function advanceMatch(match:Match,now:number) {
     for(const p of match.players){
       if(p.health<=0){if(p.respawnAt<=match.time)spawn(match,p);else continue;}
       if(p.reloadUntil&&p.reloadUntil<=match.time){const count=Math.min(WEAPONS[p.weapon].magazine-p.ammo,p.reserve);p.ammo+=count;p.reserve-=count;p.reloadUntil=0;}
-      const input=p.bot?botInput(match,p):match.time-p.lastInputAt<INPUT_EXPIRY?p.intent:{...ZERO_INPUT};
+      const input=match.time-p.lastInputAt<INPUT_EXPIRY?p.intent:{...ZERO_INPUT};
       movePlayer(match,p,input,delta/1000);
       if(input.reload)beginReload(match,p);
       if(input.shoot&&!input.sprint)shoot(match,p);
@@ -292,5 +231,6 @@ export function advanceMatch(match:Match,now:number) {
 /** No auth material is ever stored in the simulation or sent to another player. */
 export function snapshot(match:Match,_playerId?:string):Match {
   void _playerId;
+  sanitizeMatch(match);
   return JSON.parse(JSON.stringify(match)) as Match;
 }
