@@ -1,6 +1,6 @@
-# Contributing to Nanded Strike
+# Contributing to Counter Strike Nanded
 
-Play the current build at https://nanded-strike.vercel.app. This is an original browser FPS around Bhagya Nagar, Nanded. Real people play multiplayer; there are no bots. Solo exploration is available for inspecting the city.
+Play the current build at https://counterstrike.nanded.fun. This is an original browser FPS around Bhagya Nagar, Nanded. Real people play multiplayer; there are no bots. Solo exploration is available for inspecting the city.
 
 ## Make a change
 

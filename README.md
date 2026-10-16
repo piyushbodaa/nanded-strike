@@ -1,6 +1,6 @@
-# Nanded Strike
+# Counter Strike Nanded
 
-**Play:** https://nanded-strike.vercel.app
+**Play:** https://counterstrike.nanded.fun
 
 **Source:** https://github.com/piyushbodaa/nanded-strike
 
@@ -103,4 +103,4 @@ The original application code is available under the [MIT License](LICENSE). See
 - Barlow Condensed: SIL Open Font License, [public/fonts/OFL.txt](public/fonts/OFL.txt).
 - Noto Sans Devanagari: SIL Open Font License, [public/fonts/NOTO-OFL.txt](public/fonts/NOTO-OFL.txt).
 
-Weapon models and game code are original. No Counter-Strike assets, maps, sounds, or branding are included.
+Weapon models and game code are original. No Valve game assets, maps, or sounds are included. Counter Strike Nanded is an independent project and is not affiliated with Valve.
