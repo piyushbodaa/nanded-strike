@@ -1,0 +1,43 @@
+Quaternius — Ultimate Modular Men / Swat
+
+Copyright waiver: CC0 1.0 Universal, Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Original author and official asset page:
+https://quaternius.com/packs/ultimatemodularcharacters.html
+
+Original download linked by the author:
+https://drive.google.com/drive/folders/1USAAquX2JJWuA2m6zol0KUkFe3UkZ8zX
+Individual Characters / glTF / Swat.gltf:
+https://drive.google.com/file/d/1VGmU5f8a43NBT22JWB507NDSLbmNxzF9/view
+
+Original author's License.txt:
+https://drive.google.com/file/d/1TTvylHa1CsiJuHFWWiv6PFGhLM-aAH5z/view
+
+Downloaded 2026-10-16. Repacked from self-contained glTF JSON into GLB;
+mesh, skinning, materials and all 24 authored animation clips are unchanged.
+The game clones the model, recolors uniform cloth for teams, attaches an
+original procedural weapon to the wrist, and blends masked animation clips.
+No Mixamo or Counter-Strike model is included in this asset.
+
+Verified animation names:
+Death, Gun_Shoot, HitRecieve, HitRecieve_2, Idle, Idle_Gun,
+Idle_Gun_Pointing, Idle_Gun_Shoot, Idle_Neutral, Idle_Sword, Interact,
+Kick_Left, Kick_Right, Punch_Left, Punch_Right, Roll, Run, Run_Back,
+Run_Left, Run_Right, Run_Shoot, Sword_Slash, Walk, Wave.
+
+There is no authored reload clip. Reload handling in the game combines
+the Interact arm motion with procedural weapon motion.
+
+Original license text follows:
+------------------------------------------------------
+Ultimate Modular Males by @Quaternius
+Consider supporting me on Patreon, even $1 helps me a lot!
+
+https://www.patreon.com/quaternius
+-------------------------------------------------------
+
+License:
+CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/

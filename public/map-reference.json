@@ -1,381 +1,143 @@
 {
-  "title": "Bhagya Nagar, Nanded: public map basis",
-  "center": {
-    "latitude": 19.17735,
-    "longitude": 77.3095
+  "title": "Nanded: Bhagya Nagar to Baba Nagar — geographic source notes",
+  "generated": "2026-10-16",
+  "projection": {
+    "latitude": 19.1743,
+    "longitude": 77.3111,
+    "x": "east",
+    "z": "south",
+    "units": "metres",
+    "longitudeScale": "111320*cos(latitude)",
+    "latitudeScale": 111320
   },
-  "retrieved": "2026-10-16",
-  "attribution": "© OpenStreetMap contributors",
-  "license": "Open Database License (ODbL) 1.0",
-  "license_url": "https://www.openstreetmap.org/copyright",
-  "source_url": "https://api.openstreetmap.org/api/0.6/map?bbox=77.3078,19.1765,77.3112,19.1785",
-  "map_url": "https://www.openstreetmap.org/#map=18/19.177350/77.309500",
-  "cross_check": {
-    "url": "https://www.nandedpharmacycollege.org/admin/uploads/aqar_criteria/4_1_1_adequate_infrastructure__compressed.pdf",
-    "description": "Local college first-party document identifies Bhagya Nagar Main Road in Nanded and nearby GPS coordinates."
+  "boundingBox": {
+    "west": 77.3018,
+    "south": 19.1678,
+    "east": 77.3204,
+    "north": 19.1808
   },
-  "accuracy": "Road centerlines projected directly from OSM coordinates. Road widths, building footprints/heights, gardens, vehicles and combat cover are illustrative gameplay adaptations, not a surveyed reconstruction. Road names are not assigned to unnamed OSM residential ways. No river is present in this map.",
-  "roads": [
+  "coverage": "Approximately 1.96 km east–west by 1.45 km north–south. Locality names identify starting sectors, not surveyed administrative boundaries.",
+  "actualGeometry": "425 clipped OSM street paths; 5,887 Overture building footprints; 13 mapped campus, park or ground surfaces. One game unit represents one metre. Street bends, intersections, building positions and footprints retain their geographic coordinates.",
+  "illustrativeElements": "Building heights (no measured heights supplied), facade colours, windows, doors, roof parapets, road widths, surface materials, road markings, signs and lighting are approximate visual treatments. No claim of a photographic or surveyed architectural reconstruction. Roof footprint positions are source-based, but imagery-derived outlines can be missing, displaced or outdated.",
+  "navigation": "4,550 clearance-tested waypoints in the largest connected road component. Start points are on walkable mapped roads, within 0–14 metres of their documented geographic anchors. Small disconnected road components remain visible but do not carry AI navigation.",
+  "excludedSolid": {
+    "id": "ad3d1cff-5412-4bec-8368-268cc5068f05",
+    "osmId": "way/1162009048",
+    "name": "Homeguard police ground",
+    "reason": "Source building tag describes a ground; rendered as a flat mapped surface, not a fictitious giant building."
+  },
+  "sources": [
     {
-      "id": "102662429",
-      "tags": {
-        "highway": "secondary",
-        "oneway": "yes",
-        "source": "Bing"
-      },
-      "geometry": [
-        {
-          "lat": 19.1799629,
-          "lon": 77.3052841
-        },
-        {
-          "lat": 19.1799296,
-          "lon": 77.30544
-        },
-        {
-          "lat": 19.1798701,
-          "lon": 77.3055191
-        },
-        {
-          "lat": 19.1797697,
-          "lon": 77.3056398
-        },
-        {
-          "lat": 19.1794719,
-          "lon": 77.3060328
-        },
-        {
-          "lat": 19.1789929,
-          "lon": 77.3067077
-        },
-        {
-          "lat": 19.1788971,
-          "lon": 77.3068503
-        },
-        {
-          "lat": 19.178406,
-          "lon": 77.3075796
-        },
-        {
-          "lat": 19.178188,
-          "lon": 77.3079038
-        },
-        {
-          "lat": 19.1776584,
-          "lon": 77.3086881
-        },
-        {
-          "lat": 19.1774056,
-          "lon": 77.3090661
-        },
-        {
-          "lat": 19.1772071,
-          "lon": 77.3093858
-        },
-        {
-          "lat": 19.1766711,
-          "lon": 77.3101593
-        },
-        {
-          "lat": 19.1765333,
-          "lon": 77.3103657
-        },
-        {
-          "lat": 19.1757354,
-          "lon": 77.3115588
-        },
-        {
-          "lat": 19.1752399,
-          "lon": 77.3123065
-        },
-        {
-          "lat": 19.1742324,
-          "lon": 77.3138006
-        },
-        {
-          "lat": 19.1741386,
-          "lon": 77.3139545
-        },
-        {
-          "lat": 19.1737643,
-          "lon": 77.3145175
-        },
-        {
-          "lat": 19.1735126,
-          "lon": 77.3148906
-        },
-        {
-          "lat": 19.1728223,
-          "lon": 77.315918
-        },
-        {
-          "lat": 19.1727367,
-          "lon": 77.3160506
-        },
-        {
-          "lat": 19.1723159,
-          "lon": 77.3166771
-        },
-        {
-          "lat": 19.1720781,
-          "lon": 77.3170311
-        },
-        {
-          "lat": 19.1713136,
-          "lon": 77.3181694
-        },
-        {
-          "lat": 19.1711523,
-          "lon": 77.3184095
-        },
-        {
-          "lat": 19.1695458,
-          "lon": 77.3207569
-        },
-        {
-          "lat": 19.1694749,
-          "lon": 77.3208641
-        }
-      ]
+      "name": "OpenStreetMap API",
+      "url": "https://api.openstreetmap.org/api/0.6/map?bbox=77.3018,19.1678,77.3204,19.1808",
+      "accessed": "2026-10-16",
+      "local": "/map-roads.geojson",
+      "license": "ODbL-1.0",
+      "attribution": "© OpenStreetMap contributors",
+      "copyright": "https://www.openstreetmap.org/copyright",
+      "rawSource": "/map-source.osm"
     },
     {
-      "id": "591472951",
-      "tags": {
-        "highway": "residential"
-      },
-      "geometry": [
-        {
-          "lat": 19.1772071,
-          "lon": 77.3093858
-        },
-        {
-          "lat": 19.1774934,
-          "lon": 77.309463
-        },
-        {
-          "lat": 19.179673,
-          "lon": 77.3097423
-        },
-        {
-          "lat": 19.1796163,
-          "lon": 77.310199
-        },
-        {
-          "lat": 19.1795947,
-          "lon": 77.3103728
-        },
-        {
-          "lat": 19.1795495,
-          "lon": 77.3107372
-        },
-        {
-          "lat": 19.1795085,
-          "lon": 77.3110674
-        },
-        {
-          "lat": 19.1795007,
-          "lon": 77.3111299
-        },
-        {
-          "lat": 19.1794623,
-          "lon": 77.3114395
-        }
-      ]
+      "name": "Overture Maps buildings",
+      "url": "https://docs.overturemaps.org/getting-data/",
+      "release": "2026-09-23.1",
+      "accessed": "2026-10-16",
+      "local": "/map-source.json",
+      "license": "ODbL-1.0",
+      "attribution": "© OpenStreetMap contributors, Overture Maps Foundation",
+      "licenseDetails": "https://docs.overturemaps.org/attribution/"
     },
     {
-      "id": "591472952",
-      "tags": {
-        "highway": "residential"
-      },
-      "geometry": [
-        {
-          "lat": 19.1774934,
-          "lon": 77.309463
-        },
-        {
-          "lat": 19.1774568,
-          "lon": 77.3099246
-        },
-        {
-          "lat": 19.1774267,
-          "lon": 77.3103033
-        }
-      ]
+      "name": "Google Open Buildings (5703 of the 5888 source features)",
+      "url": "https://sites.research.google/gr/open-buildings/",
+      "sourceUpdate": "2023-05-01",
+      "sourceVersion": "2024-04-16",
+      "license": "CC BY 4.0 / ODbL",
+      "attribution": "Google Open Buildings; geographic outlines inferred from imagery"
     },
     {
-      "id": "591472953",
-      "tags": {
-        "highway": "residential"
-      },
-      "geometry": [
-        {
-          "lat": 19.1774568,
-          "lon": 77.3099246
-        },
-        {
-          "lat": 19.1787079,
-          "lon": 77.3100836
-        },
-        {
-          "lat": 19.1796163,
-          "lon": 77.310199
-        }
-      ]
+      "name": "Government of Nanded — colleges directory",
+      "url": "https://nanded.gov.in/en/public-utility-category/colleges/",
+      "supports": "Government Polytechnic address: Veer Savarkar Marg, Baba Nagar, Nanded"
     },
     {
-      "id": "591491290",
-      "tags": {
-        "highway": "residential"
-      },
-      "geometry": [
-        {
-          "lat": 19.1774056,
-          "lon": 77.3090661
-        },
-        {
-          "lat": 19.1780747,
-          "lon": 77.3089354
-        },
-        {
-          "lat": 19.1786027,
-          "lon": 77.3088341
-        }
-      ]
+      "name": "Yeshwant Mahavidyalaya — official college timetable",
+      "url": "https://ymnnanded.in/tt2526.html",
+      "supports": "V.I.P. Road, Baba Nagar, Nanded-431602"
     },
     {
-      "id": "841309108",
-      "tags": {
-        "highway": "secondary",
-        "oneway": "yes",
-        "source": "digitalglobe"
-      },
-      "geometry": [
-        {
-          "lat": 19.1716303,
-          "lon": 77.3175184
-        },
-        {
-          "lat": 19.1720049,
-          "lon": 77.316981
-        },
-        {
-          "lat": 19.1726514,
-          "lon": 77.3159973
-        },
-        {
-          "lat": 19.1727431,
-          "lon": 77.3158658
-        },
-        {
-          "lat": 19.1736742,
-          "lon": 77.3145153
-        },
-        {
-          "lat": 19.1740099,
-          "lon": 77.3139565
-        },
-        {
-          "lat": 19.1741172,
-          "lon": 77.3137883
-        },
-        {
-          "lat": 19.175084,
-          "lon": 77.3123386
-        },
-        {
-          "lat": 19.1756654,
-          "lon": 77.3115011
-        },
-        {
-          "lat": 19.1765047,
-          "lon": 77.310236
-        },
-        {
-          "lat": 19.1772868,
-          "lon": 77.3090811
-        },
-        {
-          "lat": 19.1775639,
-          "lon": 77.308691
-        },
-        {
-          "lat": 19.1781208,
-          "lon": 77.3078443
-        },
-        {
-          "lat": 19.1782786,
-          "lon": 77.3076126
-        },
-        {
-          "lat": 19.178816,
-          "lon": 77.3067945
-        },
-        {
-          "lat": 19.1793603,
-          "lon": 77.3060207
-        },
-        {
-          "lat": 19.1796642,
-          "lon": 77.3056147
-        },
-        {
-          "lat": 19.1798303,
-          "lon": 77.3053569
-        },
-        {
-          "lat": 19.1799629,
-          "lon": 77.3052841
-        }
-      ]
+      "name": "Government of Maharashtra election counting centres",
+      "url": "https://ceoelection.maharashtra.gov.in/Downloads/AC2014/VE2014CountingCentres.pdf",
+      "supports": "Nanded North: Government Polytechnic near Yashwant College Road, Babanagar"
+    },
+    {
+      "name": "Government of Maharashtra DVET institute contacts",
+      "url": "https://www.dvet.gov.in/wp-content/uploads/2018/07/ContactList_For_Web_14122022.pdf",
+      "supports": "Government ITI Nanded: College Road, Nanded"
+    },
+    {
+      "name": "Nanded Pharmacy College infrastructure document",
+      "url": "https://www.nandedpharmacycollege.org/admin/uploads/aqar_criteria/4_1_1_adequate_infrastructure__compressed.pdf",
+      "supports": "Bhagya Nagar Main Road / Shyam Nagar; geotagged photo19.175717,77.308222"
+    },
+    {
+      "name": "Maharashtra legislature road works appendix",
+      "url": "https://mls.org.in/budget-2022/Publications/Appendix/Part-III%20Appendix%20B%20%E2%80%93%20Works%20-%20Roads%20%26%20Bridge.pdf",
+      "supports": "Road between Workshop Corner and Annabhau Sathe Chowk, Nanded"
     }
   ],
-  "nearby_osm_context": [
+  "anchors": [
     {
-      "type": "node",
-      "id": 7635002096,
-      "latitude": 19.1770104,
-      "longitude": 77.3092864,
-      "tags": {
-        "addr:full": "Opp. Bhagya Nagar Kaman, Above AXIS Bank ATM, Nanded",
-        "amenity": "dentist",
-        "name": "Dande's Om Sai Multispeciality & Paediatric Dental Clinic"
-      }
+      "id": "bhagya",
+      "name": "Bhagya Nagar",
+      "latitude": 19.1772071,
+      "longitude": 77.3093858,
+      "basis": "Actual junction of OSM ways102662429 and591472951; nearby OSM node7635002096 address says Bhagya Nagar Kaman."
     },
     {
-      "type": "node",
-      "id": 11698717467,
-      "latitude": 19.176197,
-      "longitude": 77.3103811,
-      "tags": {
-        "addr:city": "Nanded",
-        "addr:street": "Bhagya Nagar Road",
-        "amenity": "cafe",
-        "name": "COTTAGE COFFEE"
-      }
+      "id": "workshop",
+      "name": "Workshop Corner",
+      "latitude": 19.1800057,
+      "longitude": 77.3041901,
+      "basis": "Actual Vazirabad Road junction geometry; nearby OSM7635002071 address Workshop Corner, and11698717763 Workshop Rd; primary roadworks appendix confirms locality name."
     },
     {
-      "type": "node",
-      "id": 11698725004,
-      "latitude": 19.1794066,
-      "longitude": 77.3062121,
-      "tags": {
-        "addr:city": "Nanded",
-        "addr:street": "Bhagya Nagar Road",
-        "amenity": "bank",
-        "name": "State Bank of India"
-      }
+      "id": "shrinagar",
+      "name": "Shri Nagar",
+      "latitude": 19.1758001,
+      "longitude": 77.3058,
+      "basis": "OSM way475845759 named SRINAGAR; nearby shop addresses also name SRINAGAR."
     },
     {
-      "type": "node",
-      "id": 11698734170,
-      "latitude": 19.177229,
-      "longitude": 77.3091038,
-      "tags": {
-        "amenity": "atm",
-        "name": "Axis Bank ATM"
-      }
+      "id": "anand",
+      "name": "Anand Nagar",
+      "latitude": 19.17275,
+      "longitude": 77.3157,
+      "basis": "Public Bhagya Nagar Road approach near OSM address nodes7635002056,7635002101 and7635002111 naming Anand Nagar."
+    },
+    {
+      "id": "college-road",
+      "name": "Yashwant College Road",
+      "latitude": 19.1742657,
+      "longitude": 77.3090828,
+      "basis": "Exact point on north-south OSM way267213583. Road name corroborated by Government Polytechnic counting-centre address and local first-party addresses; OSM way itself is unnamed."
+    },
+    {
+      "id": "baba",
+      "name": "Baba Nagar",
+      "latitude": 19.1699,
+      "longitude": 77.3098,
+      "basis": "Public road near actual Yeshwant College campus993255388 and Government Polytechnic campus912075883; official addresses identify Baba Nagar."
+    },
+    {
+      "id": "iti",
+      "name": "ITI Shri Nagar",
+      "latitude": 19.1697,
+      "longitude": 77.30445,
+      "basis": "Road approach beside actual Government ITI campus1258365919. DVET verifies College Road address. Shri Nagar is the user-facing sector name, not an asserted official institute address."
     }
   ],
-  "road_name_note": "The selected OSM ways are unnamed. Bhagya Nagar Road is the surrounding corridor identification supported by nearby OSM address records and the local college document. Unnamed residential lanes retain generic labels.",
-  "osm_snapshot_timestamp": "2026-10-16T10:52:35Z"
+  "roadNames": "SRINAGAR is displayed as Shri Nagar Road. Bhagya Nagar Road and Yashwant College Road labels are corroborated by public address evidence; their OSM ways are unnamed. Other unnamed streets remain unnamed.",
+  "textureAttribution": "/textures/sources.json",
+  "reproduce": "uv run --with shapely python scripts/build-geodata.py reads the bundled public/map-source.osm and public/map-source.json, then projects actual geometry, estimates heights/widths, and builds clearance-tested navigation. No procedural replacement buildings."
 }

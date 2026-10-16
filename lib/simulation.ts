@@ -1,4 +1,6 @@
 import { COLLIDERS, SPAWNS, SPAWN_YAWS, WAYPOINTS, MAP_BOUNDS } from "./map";
+import { SpatialGrid } from "./spatial";
+import { raySolid, touchesSolid } from "./geometry";
 
 export type Team = "blue" | "orange";
 export type Weapon = "rifle" | "pistol";
@@ -27,6 +29,8 @@ export interface Match {
   players: Player[]; scores: Record<Team, number>; endsAt: number;
   winner: Team | "draw" | null; events: GameEvent[]; time: number;
   startedAt: number; round: number; winnerAt: number; nextId: number; eventId: number; seed: number;
+  locationId?: string; exploration?: boolean;
+  spawns?: Record<Team,{x:number;z:number}[]>; spawnYaws?: Record<Team,number>;
 }
 export const EYE_HEIGHT = 1.58;
 export const PLAYER_RADIUS = 0.36;
@@ -43,6 +47,7 @@ const BOT_NAMES = ["GODAVARI", "DECCAN", "WAZIRABAD", "MARATHWADA", "SAHYADRI", 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const distance = (a: {x:number;z:number}, b: {x:number;z:number}) => Math.hypot(a.x-b.x,a.z-b.z);
 const finite = (v: unknown, fallback = 0) => typeof v === "number" && Number.isFinite(v) ? v : fallback;
+const colliderGrid = new SpatialGrid(COLLIDERS);
 
 export function sanitizeInput(value: Partial<Input> | null | undefined): Input {
   const i = value && typeof value === "object" ? value : {};
@@ -62,7 +67,7 @@ function event(match: Match, type: GameEvent["type"], player: Player | undefined
 }
 function magazines(): Player["magazines"] { return { rifle: {ammo:30,reserve:120}, pistol: {ammo:12,reserve:60} }; }
 function spawn(match: Match, player: Player) {
-  const options = SPAWNS[player.team];
+  const options = (match.spawns??SPAWNS)[player.team];
   let best = options[0]; let score = -Infinity;
   for (const spot of options) {
     const enemy = Math.min(80, ...match.players.filter(p => p.team !== player.team && p.health>0).map(p => distance(p, spot)));
@@ -72,7 +77,7 @@ function spawn(match: Match, player: Player) {
   }
   Object.assign(player, { x:best.x, z:best.z, y:0, vy:0, health:100, respawnAt:0, reloadUntil:0,
     invulnerableUntil:match.time+1300, magazines:magazines(), weapon:"rifle", ammo:30, reserve:120,
-    yaw:SPAWN_YAWS[player.team], pitch:0, intent:{...ZERO_INPUT}, botTarget:-1,
+    yaw:(match.spawnYaws??SPAWN_YAWS)[player.team], pitch:0, intent:{...ZERO_INPUT}, botTarget:-1,
     botDecisionAt:0, nextBotShotAt:match.time+700, lastShotAt:0 });
   event(match,"respawn",player);
 }
@@ -84,6 +89,7 @@ function makePlayer(match: Match, name: string, team: Team, bot: boolean): Playe
   match.players.push(player); spawn(match,player); return player;
 }
 function fillBots(match: Match) {
+  if(match.exploration)return;
   while (match.players.length < 6) {
     const blue = match.players.filter(p => p.team === "blue").length;
     const orange = match.players.length-blue;
@@ -92,10 +98,31 @@ function fillBots(match: Match) {
     makePlayer(match,BOT_NAMES.find(n=>!used.has(n))??`BOT ${match.nextId}`,team,true);
   }
 }
-export function createMatch(now: number): Match {
+export interface MatchOptions {locationId?:string;start?:{x:number;z:number;yaw:number};exploration?:boolean;}
+function sectorSpawns(start:{x:number;z:number;yaw:number}) {
+  const nearest=waypointGrid.around(start.x,start.z,110).filter(p=>isWalkable(p.x,p.z));
+  const blue=isWalkable(start.x,start.z)?start:nearest.sort((a,b)=>distance(a,start)-distance(b,start))[0]??SPAWNS.blue[0];
+  const target={x:blue.x-Math.sin(start.yaw)*42,z:blue.z-Math.cos(start.yaw)*42};
+  const enemyCandidates=nearest.filter(p=>distance(p,blue)>28&&distance(p,blue)<72);
+  const orange=enemyCandidates.sort((a,b)=>distance(a,target)+(clearPath(a,blue)?0:25)-distance(b,target)-(clearPath(b,blue)?0:25))[0]??SPAWNS.orange[0];
+  const direction=Math.atan2(-(orange.x-blue.x),-(orange.z-blue.z));
+  const slots=(base:{x:number;z:number},yaw:number)=>{
+    const points:{x:number;z:number}[]=[];
+    for(const back of [0,2.2,4.4,-2.2])for(const side of [0,-1.4,1.4,-2.8,2.8]) {
+      const p={x:base.x+Math.sin(yaw)*back+Math.cos(yaw)*side,z:base.z+Math.cos(yaw)*back-Math.sin(yaw)*side};
+      const ahead={x:p.x-Math.sin(yaw)*2,z:p.z-Math.cos(yaw)*2};
+      if(isWalkable(p.x,p.z)&&clearPath(p,ahead)&&points.every(q=>distance(p,q)>1.25))points.push(p);
+      if(points.length===4)return points;
+    }
+    return points.length?points:[base];
+  };
+  return {spawns:{blue:slots(blue,direction),orange:slots(orange,direction+Math.PI)},spawnYaws:{blue:direction,orange:direction+Math.PI}};
+}
+export function createMatch(now: number, options:MatchOptions={}): Match {
   const time = finite(now, Date.now());
   const match: Match = {players:[],scores:{blue:0,orange:0},endsAt:time+MATCH_DURATION,winner:null,events:[],time,
-    startedAt:time,round:1,winnerAt:0,nextId:1,eventId:0,seed:(time>>>0)||12345};
+    startedAt:time,round:1,winnerAt:0,nextId:1,eventId:0,seed:(time>>>0)||12345,
+    locationId:options.locationId,exploration:options.exploration??false,...(options.start?sectorSpawns(options.start):{})};
   fillBots(match); return match;
 }
 export function addPlayer(match: Match, name: string, requestedTeam?: Team): Player {
@@ -115,20 +142,10 @@ export function removePlayer(match: Match, playerId: string) {
 }
 
 /** Collider coordinates are centers; their vertical slabs stop shots. */
-function rayBox(ox:number,oy:number,oz:number,dx:number,dy:number,dz:number, box:{x:number;z:number;w:number;d:number;h:number}, padding=0):number {
-  let near=0; let far=Infinity;
-  const axes = [[ox,dx,box.x-box.w/2-padding,box.x+box.w/2+padding],
-    [oy,dy,0,box.h], [oz,dz,box.z-box.d/2-padding,box.z+box.d/2+padding]];
-  for(const [o,d,min,max] of axes) {
-    if(Math.abs(d)<1e-8) {if(o<min||o>max)return Infinity;continue;}
-    const a=(min-o)/d,b=(max-o)/d; near=Math.max(near,Math.min(a,b));far=Math.min(far,Math.max(a,b));
-    if(near>far)return Infinity;
-  }
-  return near;
-}
+const rayBox=raySolid;
 export function isWalkable(x:number,z:number,y=0) {
   if(x<MAP_BOUNDS.minX+PLAYER_RADIUS||x>MAP_BOUNDS.maxX-PLAYER_RADIUS||z<MAP_BOUNDS.minZ+PLAYER_RADIUS||z>MAP_BOUNDS.maxZ-PLAYER_RADIUS)return false;
-  return !COLLIDERS.some(c=>y<c.h-.04&&x>c.x-c.w/2-PLAYER_RADIUS&&x<c.x+c.w/2+PLAYER_RADIUS&&z>c.z-c.d/2-PLAYER_RADIUS&&z<c.z+c.d/2+PLAYER_RADIUS);
+  return !colliderGrid.around(x,z,PLAYER_RADIUS).some(c=>y<c.h-.04&&touchesSolid(x,z,c,PLAYER_RADIUS));
 }
 export function movePlayer(_match:Match, player:Player, input:Input, dt:number) {
   if(player.health<=0)return;
@@ -164,7 +181,7 @@ function shoot(match:Match,player:Player) {
   const ox=player.x,oy=player.y+EYE_HEIGHT,oz=player.z;
   const dx=-Math.sin(player.yaw)*Math.cos(player.pitch),dy=Math.sin(player.pitch),dz=-Math.cos(player.yaw)*Math.cos(player.pitch);
   let range:number=gun.range;let victim:Player|undefined;let hitY=oy;
-  for(const c of COLLIDERS)range=Math.min(range,rayBox(ox,oy,oz,dx,dy,dz,c));
+  for(const c of colliderGrid.along(ox,oz,dx,dz,range))range=Math.min(range,rayBox(ox,oy,oz,dx,dy,dz,c));
   for(const target of match.players) {
     if(target.id===player.id||target.health<=0)continue;
     const box={x:target.x,z:target.z,w:.76,d:.76,h:1.8};
@@ -196,23 +213,26 @@ export function applyInput(match:Match,playerId:string,raw:Partial<Input>,now:nu
 function clearPath(a:{x:number;z:number},b:{x:number;z:number},padding=PLAYER_RADIUS+.05) {
   const length=distance(a,b);if(length<.01)return true;
   const dx=(b.x-a.x)/length,dz=(b.z-a.z)/length;
-  return !COLLIDERS.some(c=>rayBox(a.x,.6,a.z,dx,0,dz,c,padding)<length);
+  return !colliderGrid.along(a.x,a.z,dx,dz,length,padding).some(c=>rayBox(a.x,.6,a.z,dx,0,dz,c,padding)<length);
 }
-const waypointEdges=WAYPOINTS.map((a,i)=>WAYPOINTS.flatMap((b,j)=>i!==j&&distance(a,b)<22&&clearPath(a,b)?[j]:[]));
+const waypointGrid=new SpatialGrid(WAYPOINTS.map((p,i)=>({...p,w:0,d:0,index:i})),22);
+const waypointEdges=WAYPOINTS.map((a,i)=>waypointGrid.around(a.x,a.z,22).flatMap(b=>i!==b.index&&distance(a,b)<22&&clearPath(a,b)?[b.index]:[]));
 function navigationTarget(player:Player,target:{x:number;z:number}):number {
   // A tiny shared waypoint graph keeps bots out of building walls.
-  const starts=WAYPOINTS.map((p,i)=>({i,d:distance(player,p)})).filter(v=>clearPath(player,WAYPOINTS[v.i])).sort((a,b)=>a.d-b.d).slice(0,3);
+  const candidates=waypointGrid.around(player.x,player.z,50).map(p=>({i:p.index,d:distance(player,p)})).sort((a,b)=>a.d-b.d);
+  const starts=candidates.slice(0,18).filter(v=>clearPath(player,WAYPOINTS[v.i])).slice(0,3);
   if(!starts.length)return -1;
   const costs=WAYPOINTS.map(()=>Infinity),previous=WAYPOINTS.map(()=>-1),open=new Set<number>();
   for(const start of starts){costs[start.i]=start.d;open.add(start.i);}
   let goal=-1,bestScore=Infinity;
-  while(open.size){
+  let expanded=0;
+  while(open.size&&expanded++<512){
     let current=-1,score=Infinity;
     for(const index of open){const value=costs[index]+distance(WAYPOINTS[index],target);if(value<score){current=index;score=value;}}
     open.delete(current);
     const remaining=distance(WAYPOINTS[current],target);
     if(remaining<bestScore){bestScore=remaining;goal=current;}
-    if(clearPath(WAYPOINTS[current],target)){goal=current;break;}
+    if(remaining<50&&clearPath(WAYPOINTS[current],target)){goal=current;break;}
     for(const next of waypointEdges[current]){const cost=costs[current]+distance(WAYPOINTS[current],WAYPOINTS[next]);if(cost<costs[next]){costs[next]=cost;previous[next]=current;open.add(next);}}
   }
   if(goal<0)return starts[0].i;
@@ -254,7 +274,7 @@ export function advanceMatch(match:Match,now:number) {
   while(remaining>.001){
     const delta=Math.min(remaining,1000/60);remaining-=delta;match.time+=delta;
     if(match.winner){if(match.time-match.winnerAt>=7000)restartRound(match);else continue;}
-    if(match.time>=match.endsAt){finishRound(match);continue;}
+    if(!match.exploration&&match.time>=match.endsAt){finishRound(match);continue;}
     for(const p of match.players){
       if(p.health<=0){if(p.respawnAt<=match.time)spawn(match,p);else continue;}
       if(p.reloadUntil&&p.reloadUntil<=match.time){const count=Math.min(WEAPONS[p.weapon].magazine-p.ammo,p.reserve);p.ammo+=count;p.reserve-=count;p.reloadUntil=0;}
@@ -266,7 +286,7 @@ export function advanceMatch(match:Match,now:number) {
     }
   }
   match.time=destination;
-  if(!match.winner&&destination>=match.endsAt)finishRound(match);
+  if(!match.exploration&&!match.winner&&destination>=match.endsAt)finishRound(match);
   if(match.winner&&destination-match.winnerAt>=7000)restartRound(match);
 }
 /** No auth material is ever stored in the simulation or sent to another player. */

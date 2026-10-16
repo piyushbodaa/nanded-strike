@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "Nanded Strike · The city is your arena",
-  description: "Squad up in Bhagya Nagar, Nanded. An original multiplayer browser shooter with instant solo practice.",
+  title: "Nanded Strike · Single-player prototype",
+  description: "Explore Bhagya Nagar and six nearby Nanded neighbourhoods in a browser FPS prototype. Practice against bots on phone or laptop; multiplayer is the next milestone.",
   icons: { icon: "/favicon.svg" },
 };
 export default function RootLayout({children}: Readonly<{children: React.ReactNode}>) {

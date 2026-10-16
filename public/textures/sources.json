@@ -1,0 +1,38 @@
+[
+  {
+    "id": "asphalt_02",
+    "source": "https://polyhaven.com/a/asphalt_02",
+    "license": "CC0-1.0",
+    "licenseURL": "https://polyhaven.com/license",
+    "resolution": 1024,
+    "files": {
+      "Diffuse": "/textures/asphalt_02_diff.jpg",
+      "nor_gl": "/textures/asphalt_02_normal.jpg",
+      "Rough": "/textures/asphalt_02_rough.jpg"
+    }
+  },
+  {
+    "id": "plastered_wall_02",
+    "source": "https://polyhaven.com/a/plastered_wall_02",
+    "license": "CC0-1.0",
+    "licenseURL": "https://polyhaven.com/license",
+    "resolution": 1024,
+    "files": {
+      "Diffuse": "/textures/plastered_wall_02_diff.jpg",
+      "nor_gl": "/textures/plastered_wall_02_normal.jpg",
+      "Rough": "/textures/plastered_wall_02_rough.jpg"
+    }
+  },
+  {
+    "id": "concrete_floor_02",
+    "source": "https://polyhaven.com/a/concrete_floor_02",
+    "license": "CC0-1.0",
+    "licenseURL": "https://polyhaven.com/license",
+    "resolution": 1024,
+    "files": {
+      "Diffuse": "/textures/concrete_floor_02_diff.jpg",
+      "nor_gl": "/textures/concrete_floor_02_normal.jpg",
+      "Rough": "/textures/concrete_floor_02_rough.jpg"
+    }
+  }
+]
