@@ -133,7 +133,7 @@ export default function Home() {
     {hud.mode==='lobby'&&<div className="lobby" data-testid="lobby">
       <div className="lobby-shade"/>
       <header className="site-header">
-        <Link className="brand" href="/" aria-label="Nanded Strike home"><Crosshair size={30}/><span>NANDED <b>STRIKE</b></span></Link>
+        <Link className="brand" href="/" aria-label="Counter Strike Nanded home"><Crosshair size={30}/><span className="brand-wordmark">COUNTER STRIKE <b>NANDED</b></span></Link>
         <span className="prototype-label">MULTIPLAYER PROTOTYPE</span>
         <nav aria-label="Game menu">
           <button className="nav-button" onClick={()=>open('guide')}><Gamepad2 size={18}/><span>CONTROLS & MAP</span></button>
@@ -143,7 +143,7 @@ export default function Home() {
       <div className="lobby-content">
         <section className="hero">
           <div className="eyebrow"><MapPin size={16}/> NANDED, MAHARASHTRA <span lang="mr">नांदेड</span></div>
-          <h1>YOUR CITY.<br/><span>YOUR GROUND.</span></h1>
+          <h1>COUNTER STRIKE<br/><span>NANDED</span></h1>
           <p className="hero-description">Meet other players on Nanded’s mapped streets.<br/>Real opponents. No bots. Or explore at your own pace.</p>
           <div className="start-panel">
             <div className="lobby-name"><label className="input-label" htmlFor="lobby-name">YOUR CALLSIGN</label><input id="lobby-name" maxLength={18} value={name} onChange={event=>setName(event.target.value)} placeholder="Operator" autoComplete="nickname"/></div>
