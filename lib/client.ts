@@ -4,7 +4,7 @@ import { createActor, loadActorAsset, updateActor, disposeActor, type Actor } fr
 import { createWeaponView } from './weapon-view';
 import { LOCATIONS, DEFAULT_LOCATION_ID } from './locations';
 import { createMatch, addPlayer, applyInput, movePlayer, EYE_HEIGHT, WEAPONS } from './simulation';
-import { COLLIDERS, MAP_BOUNDS, ROADS } from './map';
+import { COLLIDERS, MAP_BOUNDS, ROADS, SPAWN_YAWS } from './map';
 
 type Match = ReturnType<typeof createMatch>;
 type Player = Match['players'][number];
@@ -50,7 +50,7 @@ export class GameClient {
   mode:Mode='lobby'; paused=false; match:Match|null=null; playerId=''; room=''; token='';
   settings:Settings={sensitivity:1,volume:.35,quality:'high'}; sound=new Sound();
   keys=new Set<string>(); yaw=0; pitch=0; shooting=false; queuedShot=false; reloading=false; jumping=false; selectedWeapon:'rifle'|'pistol'='rifle'; seq=0;
-  simulationTimer:ReturnType<typeof setInterval>; frame=0; lastFrame=0; lastHUD=0; pollTimer:ReturnType<typeof setTimeout>|null=null; networkGeneration=0;
+  simulationTimer:ReturnType<typeof setInterval>; lobbyDirty=true; frame=0; lastFrame=0; lastHUD=0; pollTimer:ReturnType<typeof setTimeout>|null=null; networkGeneration=0;
   ping=0; connected=true; seenEvents=new Set<string>(); feed:{id:string,text:string,at:number}[]=[]; hitUntil=0; hurtUntil=0; previousHealth=100;
   characters=new Map<string,Actor>(); particles:{mesh:THREE.Object3D,until:number}[]=[];
   lastStep=0; pausedAt=0; scoreboard=false;
@@ -101,7 +101,7 @@ export class GameClient {
     const releaseLook=((e:TouchEvent)=>{if(Array.from(e.changedTouches).some(t=>t.identifier===this.touchLook?.id))this.touchLook=null;}) as EventListener;
     this.listen(this.canvas,'touchend',releaseLook);this.listen(this.canvas,'touchcancel',releaseLook);
   }
-  resize(){const w=window.innerWidth,h=window.innerHeight;this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,this.settings.quality==='high'?2:1.25,Math.sqrt(4_000_000/(w*h))));this.renderer.setSize(w,h,false);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();}
+  resize(){this.lobbyDirty=true;const w=window.innerWidth,h=window.innerHeight;this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,this.settings.quality==='high'?2:1.25,Math.sqrt(4_000_000/(w*h))));this.renderer.setSize(w,h,false);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();}
   updateSettings(settings:Settings){this.settings=settings;this.sound.volume=settings.volume;this.renderer.shadowMap.enabled=settings.quality==='high';this.resize();}
   startSolo(name:string,locationId=DEFAULT_LOCATION_ID,exploration=false){
     this.leave();const location=LOCATIONS.find(l=>l.id===locationId)??LOCATIONS[0],now=Date.now();
@@ -142,8 +142,9 @@ export class GameClient {
   leave(){
     const oldRoom=this.room,oldToken=this.token;
     if(this.mode==='online'&&oldToken)void fetch('/api/game',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'leave',room:oldRoom,token:oldToken}),keepalive:true}).catch(()=>{});
-    this.networkGeneration++;if(this.pollTimer)clearTimeout(this.pollTimer);this.pollTimer=null;this.mode='lobby';this.paused=false;this.queuedShot=false;this.match=null;this.playerId='';this.room='';this.token='';this.keys.clear();this.shooting=false;this.touchMove={forward:0,strafe:0};this.touchSprint=false;this.touchLook=null;this.scoreboard=false;this.weapon.visible=false;
+    this.networkGeneration++;if(this.pollTimer)clearTimeout(this.pollTimer);this.pollTimer=null;this.mode='lobby';this.lobbyDirty=true;this.paused=false;this.queuedShot=false;this.match=null;this.playerId='';this.room='';this.token='';this.keys.clear();this.shooting=false;this.touchMove={forward:0,strafe:0};this.touchSprint=false;this.touchLook=null;this.scoreboard=false;this.weapon.visible=false;
     for(const p of this.characters.values()){this.scene.remove(p.group);disposeActor(p);}this.characters.clear();
+    for(const particle of this.particles){this.scene.remove(particle.mesh);this.disposeObject(particle.mesh);}this.particles=[];
     if(document.pointerLockElement===this.canvas)document.exitPointerLock();this.emitHUD();
   }
   updateCharacters(dt:number){
@@ -180,13 +181,19 @@ export class GameClient {
   // Simulation remains responsive when GPU rendering misses a frame.
   tick(){
     if(this.mode!=='solo'||this.paused||!this.match||!this.me)return;
-    const now=Date.now();applyInput(this.match,this.playerId,this.input(),now);
+    const previousHealth=this.me.health,round=this.match.round,now=Date.now();
+    applyInput(this.match,this.playerId,this.input(),now);
+    const p=this.me;
+    if(p&&p.health>0&&(previousHealth<=0||round!==this.match.round)){
+      this.yaw=p.yaw=(this.match.spawnYaws??SPAWN_YAWS)[p.team];this.pitch=p.pitch=0;
+      p.intent.yaw=this.yaw;p.intent.pitch=0;this.selectedWeapon='rifle';
+    }
     this.reloading=false;this.jumping=false;this.queuedShot=false;
   }
   animate=(t:number)=>{
     const dt=Math.min((t-this.lastFrame)/1000,.05)||.016;this.lastFrame=t;const now=Date.now();
     if(this.mode==='lobby'){
-      const location=LOCATIONS[0],angle=t*.000017;this.camera.position.set(location.x-55+Math.sin(angle)*5,62,location.z+65+Math.cos(angle)*5);this.camera.lookAt(location.x+25,0,location.z-5);this.weapon.visible=false;
+      const location=LOCATIONS[0];this.camera.position.set(location.x-55,62,location.z+70);this.camera.lookAt(location.x+25,0,location.z-5);this.weapon.visible=false;
     }else if(this.match&&this.me){
       const input=this.input();
       const p=this.me;
@@ -205,7 +212,7 @@ export class GameClient {
     }
     this.world.update(t/1000,this.camera.position);
     if(t-this.lastHUD>90){this.emitHUD();this.lastHUD=t;}
-    this.renderer.render(this.scene,this.camera);this.frame=requestAnimationFrame(this.animate);
+    if(this.mode!=='lobby'||this.lobbyDirty){this.renderer.render(this.scene,this.camera);this.lobbyDirty=false;}this.frame=requestAnimationFrame(this.animate);
   };
   emitHUD(){const now=Date.now();this.onHUD({now,location:this.location,exploration:this.match?.exploration??false,mode:this.mode,paused:this.paused,player:this.me?{...this.me}:null,players:this.match?.players.map(p=>({...p}))??[],scores:this.match?.scores??{blue:0,orange:0},remaining:Math.max(0,Math.ceil(((this.match?.endsAt??now+300000)-(this.mode==='solo'&&this.paused?this.pausedAt:now))/1000)),room:this.room,ping:this.ping,winner:this.match?.winner??null,feed:this.feed.map(({id,text})=>({id,text})),hit:now<this.hitUntil,hurt:now<this.hurtUntil,connected:this.connected,scoreboard:this.scoreboard});}
   drawMinimap(canvas:HTMLCanvasElement,players:Player[]=[],selfId=''){
